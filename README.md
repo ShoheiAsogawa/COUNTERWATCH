@@ -41,7 +41,7 @@ https://discord.com/oauth2/authorize?client_id=CLIENT_ID&permissions=2147593216&
 
 | 操作 | 内容 |
 | --- | --- |
-| 画像を投げる | TAB / 試合終了ボードのスクショ。キャプションに `dps gibraltar pharah mercy rein lucio brig` と書くと精度が上がる |
+| 画像を投げる | **TAB（スコアボード）全体**のスクショ。日本語UIでも可。上段の青＝味方、下段の赤＝敵、ハイライト行＝自分として読む。同じヒーローが両チームにいても大丈夫。キャプション例: `dps route66 wrecking-ball genji ashe mercy juno` |
 | `/counter` | スクショ添付 or テキストで解析。返信にヒーロー画像が付く |
 | `/role` | tank / damage / support を覚える |
 | `/side` | attack / defend / flex |
@@ -50,7 +50,7 @@ https://discord.com/oauth2/authorize?client_id=CLIENT_ID&permissions=2147593216&
 OCR（文字読み）を使うなら:
 
 ```bash
-sudo apt-get install -y tesseract-ocr
+sudo apt-get install -y tesseract-ocr tesseract-ocr-jpn tesseract-ocr-eng
 ```
 
 `DISCORD_LISTEN_ALL=0` にすると、チャンネル名に `counterwatch` / `overwatch` / `ow` / `アンチ` が含まれる部屋だけ反応します。専用部屋なら `1` のままで大丈夫です。

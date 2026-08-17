@@ -84,9 +84,9 @@ GIT_AUTO_PULL=0
 2. `bot/knowledge.json` が JSON として読めること。
 3. 次でエンジンをスモークする:
 
-python3 -c "from bot.engine import recommend, parse_text; s=parse_text('dps gibraltar pharah mercy reinhardt lucio brigitte'); r=recommend(s['map'], s['enemies'], 'damage', 'attack'); print(s['map'], [x['key'] for x in s['enemies']], [x['key'] for x in r[:5]])"
+python3 -c "from bot.engine import recommend, parse_text; s=parse_text('dps route66 wrecking-ball genji ashe mercy juno'); print(s); r=recommend('damage', s['hero_keys'], s['map_key'], 'attack'); print([x['hero']['key'] for x in r['picks'][:5]])"
 
-期待: マップ gibraltar、敵に pharah/mercy/reinhardt など、推薦の先頭付近に ashe / widowmaker / emre / sojourn / cassidy。
+期待: map_key が route-66。敵に wrecking-ball / genji / ashe / mercy / juno。TABスクショはポートレート照合で読む。
 
 # フェーズ D — 起動
 

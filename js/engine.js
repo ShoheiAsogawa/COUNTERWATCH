@@ -278,13 +278,20 @@
 
   function analyzeScreenshotText(text) {
     if (!text) return { mapKey: null, heroKeys: [] };
-    const lower = text.toLowerCase().replace(/[’']/g, "'");
+    const fold = (s) =>
+      String(s || "")
+        .toLowerCase()
+        .replace(/[’']/g, "'")
+        .replace(/[：]/g, ":")
+        .replace(/[　]/g, " ");
+    const lower = fold(text);
     let mapKey = null;
     let bestLen = 0;
     for (const m of OW.maps) {
-      for (const n of [m.name, m.nameJa, m.key.replace(/-/g, " ")]) {
-        const needle = String(n).toLowerCase();
-        if (needle.length >= 4 && lower.includes(needle) && needle.length > bestLen) {
+      const extra = m.key === "route-66" ? ["route 66", "route66", "ルート66"] : [];
+      for (const n of [m.name, m.nameJa, m.key.replace(/-/g, " "), m.key.replace(/-/g, ""), ...extra]) {
+        const needle = fold(n).replace(/:/g, "");
+        if (needle.length >= 4 && lower.replace(/:/g, "").includes(needle) && needle.length > bestLen) {
           mapKey = m.key;
           bestLen = needle.length;
         }

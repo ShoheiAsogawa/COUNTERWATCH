@@ -219,14 +219,37 @@ def recommend(my_role: str, enemies: list[str], map_key: str | None, side: str =
     }
 
 
+def _fold_text(text: str) -> str:
+    table = str.maketrans("０１２３４５６７８９：　・．", "0123456789:  .")
+    return (text or "").lower().translate(table).replace("’", "'").replace("'", "")
+
+
+MAP_ALIASES = {
+    "route-66": ["route 66", "route66", "ルート66"],
+    "watchpoint-gibraltar": ["gibraltar", "ジブラルタル"],
+    "kings-row": ["kings row", "キングスロウ"],
+    "lijiang-tower": ["lijiang", "麗江"],
+    "new-queen-street": ["queen street"],
+}
+
+HERO_ALIASES = {
+    "wrecking-ball": ["hammond", "wreckingball", "レッキング", "ハムスター"],
+    "soldier-76": ["soldier 76", "soldier76", "ソルジャー76"],
+    "dva": ["d.va", "d va"],
+    "dmon": ["d.mon", "d mon"],
+    "widowmaker": ["widow"],
+    "junker-queen": ["junker queen"],
+}
+
+
 def parse_text(text: str) -> dict:
-    lower = (text or "").lower().replace("’", "'")
+    lower = _fold_text(text)
     role = None
     if any(w in lower for w in ("tank", "タンク")):
         role = "tank"
     elif any(w in lower for w in ("support", "sup", "サポート", "ヒーラー")):
         role = "support"
-    elif any(w in lower for w in ("dps", "damage", "ダメージ", "dps")):
+    elif any(w in lower for w in ("dps", "damage", "ダメージ")):
         role = "damage"
     side = "flex"
     if any(w in lower for w in ("attack", "atk", "攻撃")):
@@ -235,29 +258,33 @@ def parse_text(text: str) -> dict:
         side = "defend"
     map_key = None
     best = 0
+    hay = lower.replace(":", "")
     for m in OW["maps"]:
         aliases = [
             m["name"],
             m["nameJa"],
             m["key"].replace("-", " "),
             m["key"].replace("-", ""),
+            *MAP_ALIASES.get(m["key"], []),
         ]
         for part in m["key"].split("-"):
             if len(part) >= 6:
                 aliases.append(part)
         for n in aliases:
-            needle = str(n).lower().replace(":", "")
-            hay = lower.replace(":", "")
+            needle = _fold_text(str(n)).replace(":", "")
             if len(needle) >= 4 and needle in hay and len(needle) > best:
                 map_key = m["key"]
                 best = len(needle)
     hero_keys = []
     names = []
     for h in OW["heroes"]:
-        names.append((h["key"], h["name"].lower()))
-        names.append((h["key"], h["nameJa"].lower()))
+        names.append((h["key"], _fold_text(h["name"])))
+        names.append((h["key"], _fold_text(h["nameJa"])))
+        names.append((h["key"], h["key"]))
         names.append((h["key"], h["key"].replace("-", " ")))
-        names.append((h["key"], h["name"].lower().replace(":", "").replace("'", "")))
+        names.append((h["key"], _fold_text(h["name"]).replace(":", "")))
+        for alias in HERO_ALIASES.get(h["key"], []):
+            names.append((h["key"], _fold_text(alias)))
     names.sort(key=lambda x: len(x[1]), reverse=True)
     used = set()
     for key, name in names:

@@ -2,7 +2,6 @@
 """COUNTERWATCH Discord bot — paste a scoreboard, get anti-picks with hero images."""
 from __future__ import annotations
 
-import io
 import os
 import sys
 from collections import defaultdict
@@ -18,6 +17,7 @@ sys.path.insert(0, str(ROOT))
 load_dotenv(ROOT / ".env")
 
 from bot.engine import (  # noqa: E402
+    HEROES,
     cd_lines,
     map_shot_path,
     movement_lines,
@@ -26,6 +26,7 @@ from bot.engine import (  # noqa: E402
     recommend,
 )
 from bot.updater import sync_from_github  # noqa: E402
+from bot.vision import read_scoreboard  # noqa: E402
 
 TOKEN = os.getenv("DISCORD_BOT_TOKEN", "").strip()
 CLIENT_ID = os.getenv("DISCORD_CLIENT_ID", "").strip()
@@ -57,21 +58,6 @@ def invite_url() -> str:
     )
 
 
-def ocr_image(data: bytes) -> str:
-    try:
-        from PIL import Image
-        import pytesseract
-    except Exception:
-        return ""
-    try:
-        img = Image.open(io.BytesIO(data))
-        if img.width > 1400:
-            img = img.resize((1400, int(img.height * 1400 / img.width)))
-        return pytesseract.image_to_string(img, lang="eng") or ""
-    except Exception:
-        return ""
-
-
 def should_listen(message: discord.Message) -> bool:
     if LISTEN_ALL:
         return True
@@ -79,23 +65,37 @@ def should_listen(message: discord.Message) -> bool:
     return any(n in name for n in CHANNEL_FILTER)
 
 
-def merge_parse(caption: str, ocr: str, user_id: int) -> dict:
+def merge_parse(caption: str, ocr: str, user_id: int, board: dict | None = None) -> dict:
     cap = parse_text(caption)
     vis = parse_text(ocr)
+    board = board or {}
     p = prefs[user_id]
-    role = cap["role"] or vis["role"] or p["role"]
-    side = cap["side"] if cap["side"] != "flex" else (vis["side"] if vis["side"] != "flex" else p["side"])
-    map_key = cap["map_key"] or vis["map_key"]
-    heroes = cap["hero_keys"] or vis["hero_keys"]
-    if len(vis["hero_keys"]) >= len(heroes):
-        heroes = vis["hero_keys"] or heroes
-    if len(heroes) >= 8:
-        heroes = heroes[-5:]
+    role = cap["role"] or board.get("role") or vis["role"] or p["role"]
+    side = cap["side"] if cap["side"] != "flex" else (
+        vis["side"] if vis["side"] != "flex" else p["side"]
+    )
+    map_key = cap["map_key"] or board.get("map_key") or vis["map_key"]
+    if cap["hero_keys"]:
+        heroes = cap["hero_keys"][:5]
+    elif len(board.get("enemies") or []) >= 2:
+        heroes = board["enemies"][:5]
     else:
-        heroes = heroes[:5]
+        heroes = vis["hero_keys"]
+        if len(heroes) >= 8:
+            heroes = heroes[-5:]
+        else:
+            heroes = heroes[:5]
     p["role"] = role
     p["side"] = side
-    return {"role": role, "side": side, "map_key": map_key, "enemies": heroes}
+    return {
+        "role": role,
+        "side": side,
+        "map_key": map_key,
+        "enemies": heroes,
+        "allies": board.get("allies") or [],
+        "self_key": board.get("self_key"),
+        "layout": board.get("layout"),
+    }
 
 
 def build_reply(state: dict) -> tuple[discord.Embed, list[discord.Embed], list[discord.File]]:
@@ -116,11 +116,15 @@ def build_reply(state: dict) -> tuple[discord.Embed, list[discord.Embed], list[d
     role_ja = {"tank": "タンク", "damage": "ダメージ", "support": "サポート"}[state["role"]]
     side_ja = {"attack": "攻撃", "defend": "防衛", "flex": "フレックス"}[state["side"]]
     enemy_txt = " · ".join(h["nameJa"] for h in enemies) or "（編成が読めませんでした）"
+    self_h = HEROES.get(state.get("self_key") or "")
+    ally_keys = state.get("allies") or []
+    tank_n = sum(1 for k in ally_keys if HEROES.get(k, {}).get("role") == "tank")
+    queue_note = "オープンキュー編成（タンクが2人）" if tank_n >= 2 else ""
 
     main = discord.Embed(
         title="COUNTERWATCH",
         color=0xF99E1A,
-        description="スクショからマップと敵編成を読んで、今の立ち回りを返します。",
+        description="TABスクショの上段＝味方・下段＝敵として読み、今の立ち回りを返します。",
     )
     if mp:
         main.add_field(
@@ -141,9 +145,15 @@ def build_reply(state: dict) -> tuple[discord.Embed, list[discord.Embed], list[d
         if url:
             main.set_thumbnail(url=url)
 
+    you = f"あなたは **{self_h['nameJa']}**（{role_ja}）" if self_h else f"{role_ja} / {side_ja}"
+    bits = [f"**{rec['comp_label']}**　{you}"]
+    if queue_note:
+        bits.append(queue_note)
+    bits.append(enemy_txt)
+    bits.append(rec["weakness"])
     main.add_field(
         name="敵の勝ち筋",
-        value=f"**{rec['comp_label']}**　{role_ja} / {side_ja}\n{enemy_txt}\n{rec['weakness']}"[:1024],
+        value="\n".join(bits)[:1024],
         inline=False,
     )
 
@@ -192,7 +202,7 @@ def build_reply(state: dict) -> tuple[discord.Embed, list[discord.Embed], list[d
     else:
         main.add_field(
             name="ヒント",
-            value="ヒーロー名が読めませんでした。画像のキャプションに `dps gibraltar pharah mercy rein lucio brig` のように書いて再投稿してください。",
+            value="ヒーローが読めませんでした。TAB画面全体を送るか、キャプションに `dps route66 wrecking-ball genji ashe mercy juno` のように書いて再投稿してください。",
             inline=False,
         )
 
@@ -268,13 +278,14 @@ async def on_message(message: discord.Message):
 
     await message.channel.typing()
     data = await images[0].read()
-    text = ocr_image(data)
+    board = read_scoreboard(data)
     caption = message.clean_content or ""
-    state = merge_parse(caption, text, message.author.id)
+    state = merge_parse(caption, board.get("ocr_text") or "", message.author.id, board)
     if not state["enemies"] and not state["map_key"]:
         await message.reply(
-            "画像は受け取った。ヒーロー名が読めなかったので、キャプションにマップと敵を書いて再投稿してほしい。\n"
-            "例: `dps gibraltar pharah mercy reinhardt lucio brigitte`"
+            "画像は受け取った。TABのスコアボード（味方上が青・敵下が赤）が画面に入っているか確認してほしい。"
+            "読めないときはキャプションにマップと敵を書いて再投稿して。\n"
+            "例: `dps route66 wrecking-ball genji ashe mercy juno`"
         )
         return
     await reply_analysis(message.channel, state, mention=message)
@@ -318,11 +329,11 @@ async def slash_counter(
     text: str | None = None,
 ):
     await interaction.response.defer()
-    ocr = ""
+    board: dict = {}
     if screenshot is not None:
         data = await screenshot.read()
-        ocr = ocr_image(data)
-    state = merge_parse(text or "", ocr, interaction.user.id)
+        board = read_scoreboard(data)
+    state = merge_parse(text or "", board.get("ocr_text") or "", interaction.user.id, board)
     if not state["enemies"] and not state["map_key"]:
         await interaction.followup.send(
             "編成が読めない。スクショを付けるか、`text` にヒーロー名を書いて。"

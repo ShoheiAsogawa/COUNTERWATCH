@@ -69,7 +69,7 @@
   }
 
   function detectHeroes(img) {
-    if (!ready || portraitCache.size < 10) return { left: [], right: [], all: [] };
+    if (!ready || portraitCache.size < 10) return { left: [], right: [], top: [], bottom: [], all: [] };
     const maxW = 960;
     const scale = Math.min(1, maxW / img.width);
     const w = Math.max(1, Math.round(img.width * scale));
@@ -82,16 +82,16 @@
 
     const heroes = [...portraitCache.entries()];
     const hits = [];
-    const sizes = [24, 32, 40, 56].filter((s) => s < w / 5 && s < h / 4);
-    const leftBand = w * 0.4;
-    const rightBand = w * 0.6;
+    const sizes = [22, 28, 36, 48].filter((s) => s < w / 5 && s < h / 4);
 
     for (const size of sizes) {
-      const stride = Math.max(8, Math.round(size / 2.5));
-      for (let y = 0; y <= h - size; y += stride) {
+      const stride = Math.max(6, Math.round(size / 3));
+      for (let y = Math.round(h * 0.08); y <= h - size; y += stride) {
         for (let x = 0; x <= w - size; x += stride) {
           const cx = x + size / 2;
-          if (cx > leftBand && cx < rightBand) continue;
+          const inLeft = cx < w * 0.36;
+          const inRight = cx > w * 0.5 && cx < w * 0.88;
+          if (!inLeft && !inRight) continue;
           const sig = signatureFromCanvas(ctx, x, y, size);
           const stats = sigStats(sig);
           if (stats.mean < 28 || stats.mean > 190 || stats.stdev < 22) continue;
@@ -106,8 +106,8 @@
               bestKey = key;
             } else if (c > second) second = c;
           }
-          if (best > 0.955 && best - Math.max(second, 0) > 0.018) {
-            hits.push({ key: bestKey, x, y, size, score: 1 - best });
+          if (best > 0.94 && best - Math.max(second, 0) > 0.012) {
+            hits.push({ key: bestKey, x, y, cx, cy: y + size / 2, size, score: 1 - best });
           }
         }
       }
@@ -117,26 +117,47 @@
     const picked = [];
     for (const hit of hits) {
       const overlap = picked.some((p) => {
-        const dx = p.x + p.size / 2 - (hit.x + hit.size / 2);
-        const dy = p.y + p.size / 2 - (hit.y + hit.size / 2);
-        return dx * dx + dy * dy < Math.pow(Math.min(p.size, hit.size) * 0.75, 2);
+        const dx = p.cx - hit.cx;
+        const dy = p.cy - hit.cy;
+        return dx * dx + dy * dy < Math.pow(Math.min(p.size, hit.size) * 0.7, 2);
       });
       if (overlap) continue;
-      if (picked.some((p) => p.key === hit.key)) continue;
+      if (picked.filter((p) => p.key === hit.key).length >= 2) continue;
       picked.push(hit);
-      if (picked.length >= 10) break;
+      if (picked.length >= 12) break;
     }
 
     const mid = w / 2;
-    const left = picked.filter((p) => p.x + p.size / 2 < mid).map((p) => p.key);
-    const right = picked.filter((p) => p.x + p.size / 2 >= mid).map((p) => p.key);
+    const left = picked.filter((p) => p.cx < mid).map((p) => p.key);
+    const right = picked.filter((p) => p.cx >= mid).map((p) => p.key);
+    const split = splitGap(picked, "cy");
     return {
       left,
       right,
+      top: split.a.map((p) => p.key),
+      bottom: split.b.map((p) => p.key),
       all: picked.map((p) => p.key),
       hits: picked,
       scale,
     };
+  }
+
+  function splitGap(items, axis) {
+    if (!items.length) return { a: [], b: [] };
+    const sorted = [...items].sort((p, q) => p[axis] - q[axis]);
+    if (sorted.length < 4) return { a: sorted, b: [] };
+    let bestI = 0;
+    let bestG = 0;
+    for (let i = 0; i < sorted.length - 1; i++) {
+      const g = sorted[i + 1][axis] - sorted[i][axis];
+      if (g > bestG) {
+        bestG = g;
+        bestI = i;
+      }
+    }
+    const span = sorted[sorted.length - 1][axis] - sorted[0][axis] + 1;
+    if (bestG < Math.max(18, span * 0.12)) return { a: sorted, b: [] };
+    return { a: sorted.slice(0, bestI + 1), b: sorted.slice(bestI + 1) };
   }
 
   function sigStats(sig) {
@@ -203,9 +224,10 @@
       }
       const Tesseract = await tesseractLoading;
       const crop = document.createElement("canvas");
-      crop.width = Math.min(1100, img.width);
-      crop.height = Math.round(crop.width * (img.height / img.width));
-      crop.getContext("2d").drawImage(img, 0, 0, crop.width, crop.height);
+      const hx = Math.round(img.width * 0.42);
+      crop.width = Math.min(900, img.width - hx);
+      crop.height = Math.max(70, Math.round(img.height * 0.22));
+      crop.getContext("2d").drawImage(img, hx, 0, img.width - hx, Math.round(img.height * 0.22), 0, 0, crop.width, crop.height);
       const result = await Tesseract.recognize(crop, "eng", { logger: () => {} });
       const text = result && result.data ? result.data.text : "";
       const mid = crop.width / 2;

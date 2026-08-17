@@ -307,9 +307,10 @@
       else if (raw) ocr = raw;
     } catch (_) {}
 
-    const pickSide = (left, right) => {
+    const pickSide = (left, right, top, bottom) => {
       if (state.enemyTeam === "left") return left;
       if (state.enemyTeam === "right") return right;
+      if ((bottom || []).length >= 3) return bottom;
       if (right.length >= 3 && left.length >= 3) return right;
       if (right.length >= left.length && right.length) return right;
       return left.length ? left : right;
@@ -321,11 +322,13 @@
     const ocrStrong = ocrLeft.length + ocrRight.length >= 4 || ocrAll.length >= 4;
 
     let keys = [];
-    if (ocrStrong) {
-      keys = pickSide(ocrLeft, ocrRight);
+    if ((vision.bottom || []).length >= 3) {
+      keys = vision.bottom;
+    } else if (ocrStrong) {
+      keys = pickSide(ocrLeft, ocrRight, [], []);
       if (keys.length < 3) keys = ocrAll.length >= 8 ? ocrAll.slice(-5) : ocrAll.slice(0, 5);
     } else {
-      keys = pickSide(vision.left || [], vision.right || []);
+      keys = pickSide(vision.left || [], vision.right || [], vision.top || [], vision.bottom || []);
       if (keys.length < 3) keys = vision.all || [];
     }
 
