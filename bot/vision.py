@@ -27,6 +27,29 @@ def _circle_mask(size: int, inner: float = 0.92) -> np.ndarray:
 GRID = 10
 MASK = _circle_mask(GRID * 2, inner=0.70)
 MASK_F = MASK.astype(np.float32)[:, :, None]
+ROLE_QUEUE = ("tank", "damage", "damage", "support", "support")
+
+
+def _color_sig(arr: np.ndarray) -> np.ndarray:
+    """Top-band color + red/green fractions — separates Kiriko/Mizuki, Mauga/Emre."""
+    img = Image.fromarray(arr).resize((48, 48), Image.Resampling.BILINEAR)
+    a = np.asarray(img, dtype=np.float32)
+    yy, xx = np.ogrid[:48, :48]
+    circ = (xx - 23.5) ** 2 + (yy - 23.5) ** 2 <= 20 ** 2
+    pix = a[circ]
+    if pix.size == 0:
+        return np.zeros(7, dtype=np.float32)
+    top = a[circ & (yy < 20)]
+    r, g, b = pix[:, 0], pix[:, 1], pix[:, 2]
+    redfrac = float(((r > g + 20) & (r > b + 12)).mean())
+    greenfrac = float(((g > r + 6) & (g > 45)).mean())
+    if top.size:
+        tr, tg, tb = top.mean(axis=0)
+        top_lum = float((tr + tg + tb) / 3)
+        top_rg = float(tr - tg)
+    else:
+        tr = tg = tb = top_lum = top_rg = 0.0
+    return np.array([tr, tg, tb, redfrac, greenfrac, top_lum, top_rg], dtype=np.float32)
 
 
 def _feat_from_arr(arr: np.ndarray) -> np.ndarray:
@@ -48,28 +71,34 @@ def _inner_mean(arr: np.ndarray) -> np.ndarray:
     return pix.mean(axis=0)
 
 
-def _feat_from_image(img: Image.Image) -> tuple[np.ndarray, np.ndarray]:
+def _feat_from_image(img: Image.Image) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     w, h = img.size
     side = int(min(w, h) * 0.82)
     sx = (w - side) // 2
     sy = (h - side) // 2 + int(h * 0.02)
     crop = img.crop((sx, sy, sx + side, sy + side)).convert("RGB")
     arr = np.asarray(crop)
-    return _feat_from_arr(arr), _inner_mean(arr)
+    return _feat_from_arr(arr), _inner_mean(arr), _color_sig(arr)
 
 
 @lru_cache(maxsize=1)
-def _templates() -> tuple[list[str], np.ndarray, np.ndarray]:
+def _templates() -> tuple[list[str], np.ndarray, np.ndarray, np.ndarray, list[str]]:
+    from bot.engine import HEROES
+
     keys: list[str] = []
     vecs: list[np.ndarray] = []
     colors: list[np.ndarray] = []
+    csigs: list[np.ndarray] = []
+    roles: list[str] = []
     for path in sorted(PORTRAIT_DIR.glob("*.png")):
         img = Image.open(path).convert("RGB")
-        feat, col = _feat_from_image(img)
+        feat, col, csig = _feat_from_image(img)
         keys.append(path.stem)
         vecs.append(feat)
         colors.append(col)
-    return keys, np.stack(vecs, axis=0), np.stack(colors, axis=0)
+        csigs.append(csig)
+        roles.append((HEROES.get(path.stem) or {}).get("role") or "damage")
+    return keys, np.stack(vecs), np.stack(colors), np.stack(csigs), roles
 
 
 def _resize_max(img: Image.Image, max_w: int = 1920) -> Image.Image:
@@ -100,20 +129,76 @@ def _row_color(arr: np.ndarray, x: int, y: int, size: int) -> tuple[str, float]:
     return "unknown", lum
 
 
-def _pick_key(scores: np.ndarray, color: np.ndarray, keys: list[str], colors: np.ndarray) -> tuple[int, float, float]:
-    order = np.argpartition(scores, -2)[-2:]
-    order = order[np.argsort(scores[order])]
-    best_i = int(order[-1])
-    second_i = int(order[0]) if len(order) > 1 else best_i
+def _pick_key(
+    scores: np.ndarray,
+    color: np.ndarray,
+    csig: np.ndarray,
+    keys: list[str],
+    colors: np.ndarray,
+    csigs: np.ndarray,
+    roles: list[str],
+    prefer_role: str | None,
+) -> tuple[int, float, float]:
+    ranked = np.argsort(scores)[::-1]
+    top = ranked[:8]
+    best_i = int(top[0])
     best = float(scores[best_i])
-    second = float(scores[second_i])
-    if best - second < 0.04:
-        d0 = float(np.linalg.norm(color - colors[best_i]))
-        d1 = float(np.linalg.norm(color - colors[second_i]))
-        if d1 + 6 < d0:
-            best_i, second_i = second_i, best_i
-            best, second = second, best
-    return best_i, best, second
+
+    def penalty(i: int) -> float:
+        # Prefer the template whose top-band color matches the crop.
+        d = float(np.linalg.norm(csig[:3] - csigs[i][:3]) / 80.0)
+        cpen = float(np.linalg.norm(color - colors[i]) / 180.0) * 0.04
+        role_pen = 0.0
+        if prefer_role and roles[i] != prefer_role:
+            role_pen = 0.11
+        # Kiriko is very red on top; Mizuki is green/teal.
+        red_pen = abs(float(csig[3] - csigs[i][3])) * 0.08
+        grn_pen = abs(float(csig[4] - csigs[i][4])) * 0.10
+        return d + cpen + role_pen + red_pen + grn_pen
+
+    chosen = best_i
+    chosen_s = best - penalty(best_i)
+    for i in top:
+        i = int(i)
+        s = float(scores[i])
+        if s < best - 0.10:
+            break
+        adj = s - penalty(i)
+        if adj > chosen_s:
+            chosen, chosen_s = i, adj
+    second = float(scores[int(top[1])]) if len(top) > 1 else 0.0
+    return chosen, float(scores[chosen]), second
+
+
+def _force_confusions(
+    key: str,
+    csig: np.ndarray,
+    prefer_role: str | None,
+    scores: np.ndarray | None = None,
+    keys: list[str] | None = None,
+) -> str:
+    redfrac, greenfrac, top_lum, top_rg = float(csig[3]), float(csig[4]), float(csig[5]), float(csig[6])
+    if key in ("kiriko", "mizuki"):
+        if greenfrac >= 0.16 and top_rg < 20:
+            return "mizuki"
+        if redfrac >= 0.42 and top_rg > 22:
+            return "kiriko"
+
+    def close_enough(other: str) -> bool:
+        if scores is None or keys is None or other not in keys or key not in keys:
+            return True
+        return float(scores[keys.index(other)]) >= float(scores[keys.index(key)]) - 0.10
+
+    # Role-queue TAB is tank / dps / dps / support / support.
+    # Only swap Mauga↔Emre when the other portrait is a close cosine match
+    # so a real open-queue second tank is not rewritten.
+    if prefer_role == "damage" and key == "mauga" and close_enough("emre"):
+        return "emre"
+    if prefer_role == "tank" and key == "emre" and close_enough("mauga"):
+        return "mauga"
+    if key in ("mauga", "emre") and prefer_role is None:
+        return "mauga" if top_lum >= 108 else "emre"
+    return key
 
 
 def _merge_mask_bands(mask: np.ndarray, lum: np.ndarray, team: str, min_h: int) -> list[dict]:
@@ -162,8 +247,22 @@ def _scoreboard_rows(arr: np.ndarray, x0: int, x1: int) -> list[dict]:
     return [row for row in cleaned if row["y1"] - row["y0"] <= int(h * 0.14)]
 
 
+def _annotate_roles(rows: list[dict]) -> None:
+    """Stamp role-queue slots onto 5-row teams (tank / dps / dps / support / support)."""
+    by_team: dict[str, list[dict]] = {}
+    for row in rows:
+        by_team.setdefault(row["team"], []).append(row)
+    for team_rows in by_team.values():
+        team_rows.sort(key=lambda z: z["y0"])
+        if len(team_rows) != 5:
+            continue
+        for i, row in enumerate(team_rows):
+            row["prefer_role"] = ROLE_QUEUE[i]
+
+
 def _best_in_row(arr: np.ndarray, row: dict, x_lo: int, x_hi: int) -> dict | None:
-    keys, mat, colors = _templates()
+    keys, mat, colors, csigs, roles = _templates()
+    prefer = row.get("prefer_role")
     h, w, _ = arr.shape
     y0, y1 = row["y0"], row["y1"]
     band_h = y1 - y0
@@ -183,15 +282,18 @@ def _best_in_row(arr: np.ndarray, row: dict, x_lo: int, x_hi: int) -> dict | Non
             if patch.std() < 16:
                 continue
             feat = _feat_from_arr(patch)
+            col = _inner_mean(patch)
+            csig = _color_sig(patch)
             scores = mat @ feat
-            idx, score, second = _pick_key(scores, _inner_mean(patch), keys, colors)
+            idx, score, second = _pick_key(scores, col, csig, keys, colors, csigs, roles, prefer)
             if score < 0.70:
                 continue
+            key = _force_confusions(keys[idx], csig, prefer, scores, keys)
             team, lum = _row_color(arr, x, y, size)
             if team == "unknown":
                 team, lum = row["team"], row["lum"]
             hit = {
-                "key": keys[idx],
+                "key": key,
                 "x": int(x),
                 "y": int(y),
                 "cx": x + size / 2,
@@ -214,17 +316,22 @@ def _match_portraits(arr: np.ndarray) -> list[dict]:
         (int(w * 0.08), int(w * 0.48), int(w * 0.08), int(w * 0.42)),  # two-column left
         (int(w * 0.50), int(w * 0.92), int(w * 0.50), int(w * 0.78)),  # two-column right
     ]
-    picked: list[dict] = []
-    seen_rows: list[tuple[int, int, str]] = []
+    unique_rows: list[dict] = []
+    row_x: list[tuple[int, int]] = []
+    seen_rows: list[tuple] = []
     for rx0, rx1, px0, px1 in regions:
         for row in _scoreboard_rows(arr, rx0, rx1):
             sig = (row["y0"] // 8, row["team"])
             if sig in seen_rows:
                 continue
-            hit = _best_in_row(arr, row, px0, px1)
-            if not hit:
-                continue
             seen_rows.append(sig)
+            unique_rows.append(row)
+            row_x.append((px0, px1))
+    _annotate_roles(unique_rows)
+    picked: list[dict] = []
+    for row, (px0, px1) in zip(unique_rows, row_x):
+        hit = _best_in_row(arr, row, px0, px1)
+        if hit:
             picked.append(hit)
     picked.sort(key=lambda z: (z["cy"], z["cx"]))
     # Prefer a 5+5 TAB reading when we got too many fragments.

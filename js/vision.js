@@ -2,6 +2,7 @@
 (function () {
   const OW = window.OW;
   const SIG = 6;
+  const ROLE_QUEUE = ["tank", "damage", "damage", "support", "support"];
   const portraitCache = new Map();
   let ready = false;
   let tesseractLoading = null;
@@ -107,7 +108,17 @@
             } else if (c > second) second = c;
           }
           if (best > 0.94 && best - Math.max(second, 0) > 0.012) {
-            hits.push({ key: bestKey, x, y, cx, cy: y + size / 2, size, score: 1 - best });
+            const hint = colorHint(sig);
+            hits.push({
+              key: forceConfusions(bestKey, hint, null),
+              x,
+              y,
+              cx,
+              cy: y + size / 2,
+              size,
+              score: 1 - best,
+              hint,
+            });
           }
         }
       }
@@ -128,18 +139,64 @@
     }
 
     const mid = w / 2;
-    const left = picked.filter((p) => p.cx < mid).map((p) => p.key);
-    const right = picked.filter((p) => p.cx >= mid).map((p) => p.key);
     const split = splitGap(picked, "cy");
+    const topHits = [...split.a].sort((a, b) => a.cy - b.cy);
+    const bottomHits = [...split.b].sort((a, b) => a.cy - b.cy);
     return {
-      left,
-      right,
-      top: split.a.map((p) => p.key),
-      bottom: split.b.map((p) => p.key),
+      left: picked.filter((p) => p.cx < mid).map((p) => p.key),
+      right: picked.filter((p) => p.cx >= mid).map((p) => p.key),
+      top: applyRoleQueue(topHits),
+      bottom: applyRoleQueue(bottomHits),
       all: picked.map((p) => p.key),
       hits: picked,
       scale,
     };
+  }
+
+  function colorHint(sig) {
+    let tr = 0;
+    let tg = 0;
+    let tb = 0;
+    const topCells = SIG * 2;
+    for (let i = 0; i < topCells; i++) {
+      tr += sig[i * 3];
+      tg += sig[i * 3 + 1];
+      tb += sig[i * 3 + 2];
+    }
+    const n = topCells || 1;
+    let red = 0;
+    let green = 0;
+    const all = sig.length / 3;
+    for (let i = 0; i < all; i++) {
+      const r = sig[i * 3];
+      const g = sig[i * 3 + 1];
+      const b = sig[i * 3 + 2];
+      if (r > g + 20 && r > b + 12) red++;
+      if (g > r + 6 && g > 45) green++;
+    }
+    return {
+      topRg: tr / n - tg / n,
+      redfrac: red / all,
+      greenfrac: green / all,
+      topLum: (tr + tg + tb) / (3 * n),
+    };
+  }
+
+  function forceConfusions(key, hint, preferRole) {
+    const h = hint || {};
+    if (key === "kiriko" || key === "mizuki") {
+      if ((h.greenfrac || 0) >= 0.16 && (h.topRg || 0) < 20) return "mizuki";
+      if ((h.redfrac || 0) >= 0.42 && (h.topRg || 0) > 22) return "kiriko";
+    }
+    if (preferRole === "damage" && key === "mauga") return "emre";
+    if (preferRole === "tank" && key === "emre") return "mauga";
+    return key;
+  }
+
+  function applyRoleQueue(hits) {
+    const list = hits || [];
+    if (list.length !== 5) return list.map((h) => h.key);
+    return list.map((h, i) => forceConfusions(h.key, h.hint, ROLE_QUEUE[i]));
   }
 
   function splitGap(items, axis) {
