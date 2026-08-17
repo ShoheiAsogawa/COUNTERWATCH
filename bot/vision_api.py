@@ -31,10 +31,17 @@ def _hero_key(raw: str, keys: set[str]) -> str | None:
 
 
 def read_with_api(image_bytes: bytes) -> dict | None:
-    token = (os.getenv("VISION_API_KEY") or os.getenv("OPENAI_API_KEY") or "").strip()
+    token = (
+        os.getenv("VISION_API_KEY")
+        or os.getenv("OPENAI_API_KEY")
+        or ""
+    ).strip()
     if not token:
         return None
     base = (os.getenv("VISION_API_BASE") or "https://api.openai.com/v1").rstrip("/")
+    if "deepseek.com" in base:
+        # Official DeepSeek chat API cannot see pixels. Keep portrait matching.
+        return None
     model = os.getenv("VISION_MODEL") or "gpt-4o-mini"
     b64 = base64.b64encode(image_bytes).decode("ascii")
     payload = {

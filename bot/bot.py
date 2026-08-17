@@ -25,6 +25,7 @@ from bot.engine import (  # noqa: E402
     portrait_path,
     recommend,
 )
+from bot.llm import polish_fight_plan  # noqa: E402
 from bot.tactics import fight_plan, plan_embed_body  # noqa: E402
 from bot.updater import sync_from_github  # noqa: E402
 from bot.vision import read_scoreboard  # noqa: E402
@@ -171,9 +172,10 @@ def build_reply(state: dict) -> tuple[discord.Embed, list[discord.Embed], list[d
     if plan.get("where") or plan.get("threats"):
         hero = plan.get("hero")
         img = attach(portrait_path(hero["key"]), f"{hero['key']}.png") if hero else None
+        body = polish_fight_plan(plan, state) or plan_embed_body(plan)
         fight = discord.Embed(
             title=f"こう戦え — {plan['title']}",
-            description=plan_embed_body(plan),
+            description=body,
             color=0x3CE0A0,
         )
         if img:

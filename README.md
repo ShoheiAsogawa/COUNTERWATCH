@@ -49,12 +49,15 @@ https://discord.com/oauth2/authorize?client_id=CLIENT_ID&permissions=2147593216&
 
 返信に **こう戦え**（今のキャラ×マップ×敵ピックの地点と返し）と、任意で乗り換え候補が付きます。
 
-TABの読み取り精度を上げるなら、OpenAI 互換の Vision API を `.env` に足します（未設定でもポートレート照合で動きます）:
+立ち回り文は **DeepSeek** で具体化できます（公式APIはテキストのみ。スクショの画素は読めません）。`.env`:
 
 ```
-VISION_API_KEY=sk-...
-VISION_MODEL=gpt-4o-mini
+DEEPSEEK_API_KEY=sk-...
+DEEPSEEK_API_BASE=https://api.deepseek.com
+DEEPSEEK_MODEL=deepseek-v4-flash
 ```
+
+TAB画像そのものをLLMに読ませるなら OpenAI 互換の Vision が別途必要です。DeepSeek キーを Vision に回しても画像は見えません。
 
 OCR（文字読み）を使うなら:
 
