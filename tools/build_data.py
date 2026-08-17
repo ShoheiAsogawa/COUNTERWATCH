@@ -963,6 +963,10 @@ def main():
             "clash": {"ja": "クラッシュ", "en": "Clash"},
         },
     }
+    sys.path.insert(0, str(ROOT))
+    from bot.tactics_data import as_dict as tactics_dict  # noqa: E402
+
+    data["tactics"] = tactics_dict()
     dest = ROOT / "js" / "data.js"
     dest.parent.mkdir(parents=True, exist_ok=True)
     dest.write_text(

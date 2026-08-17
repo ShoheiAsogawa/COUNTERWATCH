@@ -47,6 +47,15 @@ https://discord.com/oauth2/authorize?client_id=CLIENT_ID&permissions=2147593216&
 | `/side` | attack / defend / flex |
 | `!cw role dps` | プレフィックス版 |
 
+返信に **こう戦え**（今のキャラ×マップ×敵ピックの地点と返し）と、任意で乗り換え候補が付きます。
+
+TABの読み取り精度を上げるなら、OpenAI 互換の Vision API を `.env` に足します（未設定でもポートレート照合で動きます）:
+
+```
+VISION_API_KEY=sk-...
+VISION_MODEL=gpt-4o-mini
+```
+
 OCR（文字読み）を使うなら:
 
 ```bash

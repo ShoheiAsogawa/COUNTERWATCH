@@ -265,14 +265,26 @@ button {
   align-items: center;
   min-height: 52px;
 }
-.comp-tag {
-  background: var(--orange);
-  color: #1a1204;
-  font-weight: 800;
-  letter-spacing: 0.12em;
-  padding: 3px 8px;
-  font-size: 11px;
+.fight-plan {
+  margin-top: 12px;
+  padding: 12px;
+  border: 1px solid rgba(60, 224, 160, 0.25);
+  background: rgba(60, 224, 160, 0.06);
+  font-size: 13px;
+  line-height: 1.55;
 }
+.fight-plan h3 {
+  margin: 0 0 8px;
+  font-family: var(--display);
+  font-size: 16px;
+  letter-spacing: 0.04em;
+  color: #3ce0a0;
+}
+.fight-plan ul {
+  margin: 6px 0;
+  padding-left: 18px;
+}
+.fight-plan p { margin: 6px 0; }
 
 .picks {
   overflow: auto;

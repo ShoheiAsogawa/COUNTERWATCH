@@ -302,6 +302,14 @@ def _ocr_text(img: Image.Image) -> str:
 
 
 def read_scoreboard(data: bytes) -> dict:
+    try:
+        from bot.vision_api import read_with_api
+
+        api = read_with_api(data)
+        if api and len(api.get("enemies") or []) >= 2:
+            return api
+    except Exception:
+        pass
     img = Image.open(io.BytesIO(data))
     if img.mode == "RGBA":
         bg = Image.new("RGB", img.size, (12, 14, 18))

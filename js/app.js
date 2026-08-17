@@ -85,6 +85,7 @@
     renderMaps();
     renderEnemy();
     renderPicks();
+    renderFightPlan();
     renderPicker();
     renderShot();
   }
@@ -187,6 +188,31 @@
         <strong>${t("敵の勝ち筋", "Their win condition")}</strong>
         <span>${(rec.weaknesses[0] && rec.weaknesses[0][state.lang]) || t("構成の穴を突く", "Punish the holes in this comp")}</span>`;
     }
+  }
+
+  function renderFightPlan() {
+    const box = $("[data-fight-plan]");
+    if (!box) return;
+    if (!state.enemies.length) {
+      box.innerHTML = "";
+      return;
+    }
+    const rec = Engine.recommend(state);
+    const plan = Coach.fightPlan(state, rec);
+    if (!plan) {
+      box.innerHTML = "";
+      return;
+    }
+    const stations = (plan.stations || []).map((s) => `<li>${s}</li>`).join("");
+    const threats = (plan.threats || []).map((s) => `<li>${s}</li>`).join("");
+    box.innerHTML = `
+      <h3>${t("こう戦え", "Fight plan")} — ${plan.title}</h3>
+      ${plan.where ? `<p><strong>${t("今いる場所", "Stand here")}</strong> ${plan.where}</p>` : ""}
+      ${stations ? `<ul>${stations}</ul>` : ""}
+      ${plan.combo ? `<p><strong>${t("この組み合わせ", "This combo")}</strong> ${plan.combo}</p>` : ""}
+      ${threats ? `<p><strong>${t("相手のピックへの返し", "Answers")}</strong></p><ul>${threats}</ul>` : ""}
+      ${plan.play ? `<p>${plan.play}</p>` : ""}
+    `;
   }
 
   function renderPicks() {
@@ -335,6 +361,7 @@
     keys = keys.slice(0, 5);
     if (keys.length >= 3) state.enemies = keys;
     else if (keys.length && !state.enemies.length) state.enemies = keys;
+    if ((vision.top || []).length) state.allies = vision.top.slice(0, 5);
     if (ocr.mapKey) state.mapKey = ocr.mapKey;
     state.detected = { ...vision, ocr, applied: keys.length ? keys : state.enemies.slice() };
     save();

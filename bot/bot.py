@@ -25,6 +25,7 @@ from bot.engine import (  # noqa: E402
     portrait_path,
     recommend,
 )
+from bot.tactics import fight_plan, plan_embed_body  # noqa: E402
 from bot.updater import sync_from_github  # noqa: E402
 from bot.vision import read_scoreboard  # noqa: E402
 
@@ -71,9 +72,12 @@ def merge_parse(caption: str, ocr: str, user_id: int, board: dict | None = None)
     board = board or {}
     p = prefs[user_id]
     role = cap["role"] or board.get("role") or vis["role"] or p["role"]
-    side = cap["side"] if cap["side"] != "flex" else (
-        vis["side"] if vis["side"] != "flex" else p["side"]
-    )
+    if cap["side"] != "flex":
+        side = cap["side"]
+    elif board.get("side") in ("attack", "defend"):
+        side = board["side"]
+    else:
+        side = vis["side"] if vis["side"] != "flex" else p["side"]
     map_key = cap["map_key"] or board.get("map_key") or vis["map_key"]
     if cap["hero_keys"]:
         heroes = cap["hero_keys"][:5]
@@ -163,33 +167,51 @@ def build_reply(state: dict) -> tuple[discord.Embed, list[discord.Embed], list[d
             main.add_field(name="数えるクールタイム", value="\n".join(cds)[:1024], inline=False)
 
     extras: list[discord.Embed] = []
+    plan = fight_plan(state.get("self_key"), state["map_key"], state["side"], state["enemies"], pick_hero=(picks[0]["hero"] if picks else None))
+    if plan.get("where") or plan.get("threats"):
+        hero = plan.get("hero")
+        img = attach(portrait_path(hero["key"]), f"{hero['key']}.png") if hero else None
+        fight = discord.Embed(
+            title=f"こう戦え — {plan['title']}",
+            description=plan_embed_body(plan),
+            color=0x3CE0A0,
+        )
+        if img:
+            fight.set_thumbnail(url=img)
+        extras.append(fight)
+
     if picks:
         top = picks[0]
         h = top["hero"]
-        img = attach(portrait_path(h["key"]), f"{h['key']}.png")
-        move = movement_lines(h, rec, state["side"])
-        specs = [f"HP {h.get('hp')}"]
-        for a in (h.get("abilities") or []):
-            if a.get("cd"):
-                specs.append(f"{a['nameJa']} {a['cd']}")
-        body = "\n".join(
-            [
-                f"**{h['nameJa']}**（{h['name']}）  `{top['score']}`",
-                *top["reasons"][:3],
-                "",
-                "**こう動け**",
-                *[f"• {x}" for x in move],
-                "",
-                " / ".join(specs[:5]),
-            ]
-        )[:4096]
-        pick_embed = discord.Embed(title="今出すヒーロー", description=body, color=0xF99E1A)
-        if img:
-            pick_embed.set_image(url=img)
-        extras.append(pick_embed)
+        # Already playing this hero: skip "switch to X" as the lead card.
+        if not state.get("self_key") or h["key"] != state.get("self_key"):
+            img = attach(portrait_path(h["key"]), f"{h['key']}.png")
+            move = movement_lines(h, rec, state["side"])
+            specs = [f"HP {h.get('hp')}"]
+            for a in (h.get("abilities") or []):
+                if a.get("cd"):
+                    specs.append(f"{a['nameJa']} {a['cd']}")
+            body = "\n".join(
+                [
+                    f"**{h['nameJa']}**（{h['name']}）  `{top['score']}`",
+                    *top["reasons"][:3],
+                    "",
+                    "**こう動け**",
+                    *[f"• {x}" for x in move],
+                    "",
+                    " / ".join(specs[:5]),
+                ]
+            )[:4096]
+            title = "乗り換え候補" if state.get("self_key") else "今出すヒーロー"
+            pick_embed = discord.Embed(title=title, description=body, color=0xF99E1A)
+            if img:
+                pick_embed.set_image(url=img)
+            extras.append(pick_embed)
 
-        for i, row in enumerate(picks[1:4], start=2):
+        for i, row in enumerate(picks[1:3], start=2):
             hh = row["hero"]
+            if hh["key"] == state.get("self_key"):
+                continue
             thumb = attach(portrait_path(hh["key"]), f"{hh['key']}.png")
             e = discord.Embed(
                 title=f"{i}. {hh['nameJa']}",
@@ -199,7 +221,7 @@ def build_reply(state: dict) -> tuple[discord.Embed, list[discord.Embed], list[d
             if thumb:
                 e.set_thumbnail(url=thumb)
             extras.append(e)
-    else:
+    elif not extras:
         main.add_field(
             name="ヒント",
             value="ヒーローが読めませんでした。TAB画面全体を送るか、キャプションに `dps route66 wrecking-ball genji ashe mercy juno` のように書いて再投稿してください。",

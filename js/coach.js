@@ -62,6 +62,63 @@
     return lines.filter(Boolean).slice(0, 5);
   }
 
+  function fightPlan(state, rec) {
+    const ja = (state.lang || "ja") !== "en";
+    const T = (OW.tactics || {});
+    const meKey = inferSelf(state, rec);
+    const me = meKey ? Engine.heroByKey(meKey) : (rec.picks && rec.picks[0] && rec.picks[0].hero);
+    if (!me) return null;
+    const map = rec.map;
+    const spots = (T.mapSpots && T.mapSpots[state.mapKey]) || T.defaultSpots || {};
+    const home = (T.home && T.home[me.key]) || "cover";
+    const side = state.side === "defend" ? "defend" : "attack";
+    const where = (spots[home] && (spots[home][side] || spots[home].attack)) || "";
+    const enemies = rec.comp.heroes || [];
+    const ranked = [...enemies].sort((a, b) => danger(me, b) - danger(me, a));
+    const threats = ranked.slice(0, 3).map((e) => {
+      const row = (T.threats && T.threats[e.key]) || {};
+      const text = row[me.role] || row.generic || "";
+      return text ? `${ja ? e.nameJa : e.name}：${text}` : "";
+    }).filter(Boolean);
+    let combo = "";
+    let bestN = 0;
+    const have = new Set(enemies.map((h) => h.key));
+    for (const row of T.combos || []) {
+      const need = row.need || [];
+      if (need.every((k) => have.has(k)) && need.length > bestN) {
+        combo = row.ja || "";
+        bestN = need.length;
+      }
+    }
+    const stations = (spots.stations || []).slice(0, 3).map((st) => {
+      const bit = st[side] || st.attack || "";
+      return bit ? `${st.name} — ${bit}` : "";
+    }).filter(Boolean);
+    return {
+      title: ja ? `${me.nameJa} × ${map ? map.nameJa : "このマップ"}` : `${me.name} on ${map ? map.name : "this map"}`,
+      hero: me,
+      where,
+      stations,
+      threats,
+      combo,
+      play: me.play || "",
+      lose: ja ? "人数が揃う前に本線の開放へ出ない。" : "Don't walk the open main before you have numbers.",
+    };
+  }
+
+  function inferSelf(state, rec) {
+    if (state.selfKey) return state.selfKey;
+    const allies = (state.allies || []).map(Engine.heroByKey).filter(Boolean);
+    const same = allies.filter((h) => h.role === state.myRole);
+    if (same.length) return same[same.length - 1].key;
+    return null;
+  }
+
+  function danger(me, enemy) {
+    const row = (OW.matchups || {})[enemy.key] || {};
+    return row[me.key] || 0;
+  }
+
   function compose(state, rec) {
     const lang = state.lang || "ja";
     const ja = lang !== "en";
@@ -105,6 +162,7 @@
         cds: trackCds(enemies, lang),
       },
       pick: pickBlock,
+      fight: fightPlan(state, rec),
       alts: (rec.picks || []).slice(1, 4).map((p) => ({
         hero: p.hero,
         score: p.score,
@@ -113,5 +171,5 @@
     };
   }
 
-  window.Coach = { compose, trackCds };
+  window.Coach = { compose, trackCds, fightPlan };
 })();
