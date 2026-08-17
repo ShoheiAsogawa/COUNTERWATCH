@@ -23,7 +23,7 @@ from bot.engine import (  # noqa: E402
     portrait_path,
     recommend,
 )
-from bot.llm import polish_fight_plan  # noqa: E402
+from bot.llm import compose_advice  # noqa: E402
 from bot.tactics import fight_plan, plan_embed_body, watch_lines  # noqa: E402
 from bot.updater import sync_from_github  # noqa: E402
 from bot.vision import read_scoreboard  # noqa: E402
@@ -166,20 +166,23 @@ def build_reply(state: dict) -> tuple[discord.Embed, list[discord.Embed], list[d
     bits = [rec["weakness"]]
     if queue_note:
         bits.append(queue_note)
-    main.add_field(name="敵の狙い", value="\n".join(bits)[:1024], inline=False)
-
-    cds = watch_lines(state["enemies"])
-    if cds:
-        main.add_field(name="これだけ見とけ", value="\n".join(cds)[:1024], inline=False)
 
     top = picks[0] if picks else None
     pick = top["hero"] if top else None
     plan = fight_plan(None, state["map_key"], state["side"], state["enemies"], pick_hero=pick)
+    ai_body = compose_advice(plan, rec, state) if (plan.get("hero") or pick) else None
+
+    if not ai_body:
+        main.add_field(name="敵の狙い", value="\n".join(bits)[:1024], inline=False)
+        cds = watch_lines(state["enemies"])
+        if cds:
+            main.add_field(name="これだけ見とけ", value="\n".join(cds)[:1024], inline=False)
+
     if plan.get("where") or plan.get("threats") or pick:
         hero = plan.get("hero") or pick
         img = attach(portrait_path(hero["key"]), f"{hero['key']}.png") if hero else None
-        body = polish_fight_plan(plan, state) or plan_embed_body(plan)
-        if pick:
+        body = ai_body or plan_embed_body(plan)
+        if not ai_body and pick:
             why = " / ".join((top.get("reasons") or [])[:2])
             lead = f"出すなら **{pick['nameJa']}**。"
             if why:

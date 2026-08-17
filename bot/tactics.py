@@ -35,15 +35,19 @@ def _threat_line(me: dict, enemy_key: str) -> str:
 
 
 def _combo_line(enemy_keys: list[str]) -> str | None:
+    rows = all_combo_lines(enemy_keys)
+    return rows[0] if rows else None
+
+
+def all_combo_lines(enemy_keys: list[str]) -> list[str]:
     have = set(enemy_keys)
-    best = None
-    best_n = 0
+    ranked = []
     for row in TD.COMBOS:
         need = set(row["need"])
-        if need <= have and len(need) > best_n:
-            best = row["ja"]
-            best_n = len(need)
-    return best
+        if need <= have:
+            ranked.append((len(need), row["ja"]))
+    ranked.sort(key=lambda x: -x[0])
+    return [text for _, text in ranked]
 
 
 def _station_lines(spots: dict, side: str) -> list[str]:
@@ -143,3 +147,89 @@ def watch_lines(enemy_keys: list[str]) -> list[str]:
         name = hero["nameJa"] if hero else key
         out.append(f"・{name}：{line}")
     return out[:4]
+
+
+_ROLE_JA = {"tank": "タンク", "damage": "ダメージ", "support": "サポート"}
+_SIDE_JA = {"attack": "攻撃", "defend": "防衛", "flex": "フレックス"}
+
+
+def _hero_brief(hero: dict | None) -> dict | None:
+    if not hero:
+        return None
+    skills = []
+    for a in (hero.get("abilities") or [])[:4]:
+        name = a.get("nameJa") or a.get("name")
+        if not name:
+            continue
+        bit = name
+        if a.get("desc"):
+            bit += f"（{a['desc']}）"
+        if a.get("cd") and a["cd"] not in ("no CD", "hold", "weapon", "refresh", ""):
+            bit += f" {a['cd']}"
+        skills.append(bit)
+    ult = hero.get("ult") or {}
+    return {
+        "name": hero.get("nameJa") or hero.get("name"),
+        "role": _ROLE_JA.get(hero.get("role") or "", hero.get("role")),
+        "play": hero.get("play") or "",
+        "ult": ult.get("nameJa") or ult.get("name") or "",
+        "skills": skills,
+    }
+
+
+def advice_context(plan: dict, rec: dict, state: dict) -> dict:
+    """All layers the LLM should judge together — not a script to copy."""
+    mp = rec.get("map") or {}
+    coach = (mp.get("coach") or {}) if mp else {}
+    pick = plan.get("hero")
+    enemy_keys = [h["key"] for h in (rec.get("comp") or {}).get("heroes") or []]
+    if not enemy_keys:
+        enemy_keys = list(state.get("enemies") or [])
+    ally_keys = list(state.get("allies") or [])
+    me = pick or {}
+    threats_all = []
+    for key in enemy_keys:
+        line = _threat_line(me, key) if me else ""
+        if line:
+            threats_all.append(line)
+    pick_reasons = []
+    for row in rec.get("picks") or []:
+        if pick and row.get("hero", {}).get("key") == pick.get("key"):
+            pick_reasons = row.get("reasons") or []
+            break
+    if not pick_reasons and rec.get("picks"):
+        pick_reasons = rec["picks"][0].get("reasons") or []
+    return {
+        "map": {
+            "name": (mp or {}).get("nameJa") or "不明",
+            "side": _SIDE_JA.get(state.get("side") or "flex", "フレックス"),
+            "layout": coach.get("layout") or (mp or {}).get("noteJa") or "",
+            "stations": plan.get("stations") or [],
+            "stand": plan.get("where") or "",
+        },
+        "allies": [
+            {"name": HEROES[k]["nameJa"], "role": _ROLE_JA.get(HEROES[k]["role"], HEROES[k]["role"])}
+            for k in ally_keys
+            if k in HEROES
+        ],
+        "enemies": [
+            {"name": HEROES[k]["nameJa"], "role": _ROLE_JA.get(HEROES[k]["role"], HEROES[k]["role"])}
+            for k in enemy_keys
+            if k in HEROES
+        ],
+        "enemy_style": rec.get("weakness") or "",
+        "pick": {
+            **(_hero_brief(pick) or {}),
+            "reasons": pick_reasons,
+        },
+        "alts": [
+            {"name": row["hero"]["nameJa"], "reasons": (row.get("reasons") or [])[:1]}
+            for row in (rec.get("picks") or [])[1:3]
+        ],
+        "hints": {
+            "combos": all_combo_lines(enemy_keys),
+            "per_enemy": threats_all,
+            "watch": watch_lines(enemy_keys),
+            "lose": plan.get("lose") or "",
+        },
+    }

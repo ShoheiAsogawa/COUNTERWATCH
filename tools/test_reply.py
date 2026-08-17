@@ -10,7 +10,8 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 from bot.bot import build_reply  # noqa: E402
-from bot.tactics import fight_plan, plan_embed_body  # noqa: E402
+from bot.engine import recommend  # noqa: E402
+from bot.tactics import advice_context, all_combo_lines, fight_plan, plan_embed_body  # noqa: E402
 
 os.environ.pop("DEEPSEEK_API_KEY", None)
 
@@ -33,6 +34,24 @@ def main() -> None:
     )
     assert "カフェ" in plan["where"]
     assert "ボール" in plan["combo"]
+    combos = all_combo_lines(["wrecking-ball", "genji", "ashe", "mercy", "juno"])
+    assert any("ボール" in c and "ゲンジ" in c for c in combos)
+    assert any("輪" in c for c in combos)
+    assert len(combos) >= 3
+
+    rec = recommend(
+        "support",
+        ["wrecking-ball", "genji", "ashe", "mercy", "juno"],
+        "route-66",
+        "attack",
+    )
+    ctx = advice_context(plan, rec, {"side": "attack", "allies": ["sigma", "emre", "ashe", "ana", "mizuki"]})
+    assert ctx["map"]["name"] == "ルート66"
+    assert len(ctx["enemies"]) == 5
+    assert len(ctx["allies"]) == 5
+    assert ctx["hints"]["combos"]
+    assert ctx["hints"]["watch"]
+    assert ctx["pick"]["name"]
     body = plan_embed_body(plan)
     assert "どこに立つか" in body
     assert "やってはいけないこと" in body

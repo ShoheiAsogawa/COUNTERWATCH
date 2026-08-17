@@ -24,7 +24,7 @@ def _cfg() -> tuple[str, str, str] | None:
     return token, base, model
 
 
-def chat(messages: list[dict], *, max_tokens: int = 900, temperature: float = 0.3) -> str | None:
+def chat(messages: list[dict], *, max_tokens: int = 1100, temperature: float = 0.35) -> str | None:
     cfg = _cfg()
     if not cfg:
         return None
@@ -62,47 +62,66 @@ def chat(messages: list[dict], *, max_tokens: int = 900, temperature: float = 0.
         return None
 
 
-def polish_fight_plan(plan: dict, state: dict) -> str | None:
-    """Turn the structured plan into a specific Japanese fight script."""
+SYSTEM = (
+    "Overwatch 2の助言を書く。友達に話すような普通の日本語。"
+    "仕事は、与えた要素を同時に見て一つの立ち回りにまとめること。"
+    "マップの地形、敵5人の組み合わせ、味方の編成、出すヒーロー、見るべきスキルをバラバラに並べない。"
+    "交差点を書く。例:『ジュノの黄色い輪が見えたらボールとゲンジが同時に来る。ルート66ならカフェの中で待つ』。"
+    "hints は参考資料。上から書き写さない。矛盾したら敵の組み合わせとマップを優先する。"
+    "事実JSONに無い地名・スキル・ヒーローを作らない。"
+    "enemy_style 以外の構成名を付けない。敵5人を『空5』『飛び込み5』などへ言い換えない。名前で呼ぶ。"
+    "pick のスキルは、この敵の組に実際に当たるときだけ書く。飛ばない相手を鎖で落とす、など食い違いは禁止。"
+    "hints.combos にある同時技を、立ち回りの中心にする。"
+    "『あなた』『自分』は書かない。誰が今そのヒーローか、とは書かない。"
+    "見出しはこれだけ:"
+    " 出すなら **ヒーロー名**。（この敵の組×このマップで、なぜそのヒーローか1文）"
+    " **どこに立つか**"
+    " **最初にやること**"
+    " **敵の対処**（1人ずつのTipsではなく、5人の組への返し。見るスキルはここに織り込む）"
+    " **やってはいけないこと**"
+    "スキル名を出すときはカッコで何をするか書く。例: 鈴（数秒無敵になる）。"
+    "使わない言葉: 本線、クリーンセ、パイル、オフアングル、ポーク、CC、TP、ブロウル、バンカー、タイダル。"
+    "全体800文字以内。Discord向けMarkdown。"
+)
+
+
+def compose_advice(plan: dict, rec: dict, state: dict) -> str | None:
+    """Judge map × enemy combo × allies × pick together. None if no API key."""
     if not _cfg() or not plan.get("hero"):
         return None
-    hero = plan["hero"]
-    facts = {
-        "hero": hero.get("nameJa") or hero.get("name"),
-        "role": hero.get("role"),
-        "map": plan.get("title"),
-        "side": state.get("side") or "flex",
-        "stand": plan.get("where"),
-        "stations": plan.get("stations"),
-        "combo": plan.get("combo"),
-        "threats": plan.get("threats"),
-        "lose": plan.get("lose"),
-        "enemies": state.get("enemies") or [],
-        "allies": state.get("allies") or [],
-    }
+    from bot.tactics import advice_context  # local import: avoid cycle at module load
+
+    facts = advice_context(plan, rec, state)
+    enemy_names = "、".join(e["name"] for e in facts.get("enemies") or [])
+    ally_names = "、".join(a["name"] for a in facts.get("allies") or []) or "不明"
+    pick_name = (facts.get("pick") or {}).get("name") or ""
+    map_name = (facts.get("map") or {}).get("name") or ""
+    side = (facts.get("map") or {}).get("side") or ""
+    user = (
+        f"マップ: {map_name}（{side}）\n"
+        f"敵5人: {enemy_names}\n"
+        f"味方: {ally_names}\n"
+        f"出すヒーロー: {pick_name}\n"
+        "上の4つを同時に見て立ち回りを書いて。"
+        "敵を別の構成名（空5など）にまとめない。『唯一』は使わない。\n"
+        "詳細JSON:\n"
+        + json.dumps(facts, ensure_ascii=False)
+    )
     text = chat(
         [
-            {
-                "role": "system",
-                "content": (
-                    "Overwatch 2の助言を、友達に話すような普通の日本語で書く。"
-                    "与えた事実だけを使う。無い地名・スキル・ヒーローを作らない。"
-                    "『あなた』『自分』は書かない。誰が今そのヒーローか、とは書かない。"
-                    "見出しはこれだけ: **どこに立つか** / **最初にやること** / **敵の対処** / **やってはいけないこと**。"
-                    "各見出しは2〜3文。中学生でもわかる言葉。"
-                    "スキル名を出すときは、カッコで何をするか書く。例: 鈴（数秒無敵になる）。"
-                    "使わない言葉: 本線、クリーンセ、パイル、オフアングル、ポーク、CC、TP、ブロウル、バンカー、タイダル。"
-                    "全体600文字以内。Discord向けMarkdown。"
-                ),
-            },
-            {
-                "role": "user",
-                "content": "事実JSON:\n" + json.dumps(facts, ensure_ascii=False),
-            },
+            {"role": "system", "content": SYSTEM},
+            {"role": "user", "content": user},
         ],
-        max_tokens=900,
+        max_tokens=1100,
         temperature=0.25,
     )
     if not text:
         return None
     return text[:4096]
+
+
+def polish_fight_plan(plan: dict, rec: dict | None = None, state: dict | None = None) -> str | None:
+    """Back-compat wrapper. Prefer compose_advice."""
+    rec = rec or {}
+    state = state or {}
+    return compose_advice(plan, rec, state)
