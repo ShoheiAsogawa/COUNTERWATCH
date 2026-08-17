@@ -11,9 +11,10 @@ PROMPT = """This is an Overwatch 2 TAB/scoreboard screenshot (UI may be Japanese
 Return ONLY JSON:
 {"map":"english map name or key","self":"hero key of highlighted/own row or null","allies":["hero-key",...],"enemies":["hero-key",...],"side":"attack|defend|unknown"}
 Rules:
-- Allies are the TOP (blue) table. Enemies are the BOTTOM (red) table.
-- Use hyphen keys: wrecking-ball, soldier-76, dva, kiriko, juno, route-66, watchpoint-gibraltar.
-- Same hero may appear on both teams. Keep both.
+- Allies are the TOP (blue) table. Enemies are the BOTTOM (red) table. Always 5 and 5 in role queue.
+- Use hyphen keys: wrecking-ball, soldier-76, dva, kiriko, juno, emre, mizuki, hazard, route-66.
+- Juno (teal/purple visor, yellow accents) is not Wuyang (orange face). Emre is not Hazard.
+- Same hero may appear on both teams. Keep both. Do not drop names to unique-only.
 - Ignore player nicknames. Read circular portraits.
 - map from header (e.g. ROUTE 66, ルート66, エスコート).
 """
@@ -55,7 +56,7 @@ def read_with_api(image_bytes: bytes) -> dict | None:
                     {"type": "text", "text": PROMPT},
                     {
                         "type": "image_url",
-                        "image_url": {"url": f"data:image/jpeg;base64,{b64}", "detail": "low"},
+                        "image_url": {"url": f"data:image/jpeg;base64,{b64}", "detail": "high"},
                     },
                 ],
             }
@@ -101,7 +102,7 @@ def read_with_api(image_bytes: bytes) -> dict | None:
         allies = [self_key, *[a for a in allies if a != self_key]][:5]
     map_info = parse_text(str(parsed.get("map") or ""))
     side = parsed.get("side") if parsed.get("side") in ("attack", "defend") else None
-    if len(enemies) < 2 and not map_info.get("map_key"):
+    if len(enemies) < 4:
         return None
     role = HEROES[self_key]["role"] if self_key in HEROES else None
     return {

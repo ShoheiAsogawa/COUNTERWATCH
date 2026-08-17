@@ -50,11 +50,14 @@
       if (t.has("poke") || t.has("sniper") || t.has("long-range")) counts.poke += 1;
       if (t.has("brawl") || t.has("melee")) counts.brawl += 1;
       if (t.has("bunker") || t.has("turret")) counts.bunker += 2;
-      if (t.has("flyer")) counts.flying += 2;
+      if (["pharah", "echo", "jetpack-cat"].includes(h.key)) counts.flying += 2;
       if (t.has("sniper")) counts.sniper += 2;
       if (t.has("flank")) counts.flank += 1;
     }
-    if (heroes.some((h) => h.tags.includes("flyer")) && heroes.some((h) => h.tags.includes("flyer-synergy"))) {
+    if (
+      heroes.some((h) => ["pharah", "echo", "jetpack-cat"].includes(h.key)) &&
+      heroes.some((h) => h.tags.includes("flyer-synergy"))
+    ) {
       counts.flying += 3;
     }
     const ranked = Object.entries(counts).sort((a, b) => b[1] - a[1]);
@@ -257,13 +260,27 @@
       row.score = Math.round(Math.max(12, Math.min(99, 28 + t * 71)));
     }
 
+    const have = new Set(enemies.map((h) => h.key));
     const weaknesses = [];
-    if (comp.primary === "flying") weaknesses.push({ ja: "空を飛んでくる相手。下だけ見ていると負ける。", en: "Without hitscan, flyers own the sky" });
-    if (comp.primary === "dive") weaknesses.push({ ja: "一気に後ろへ飛び込んでくる。回復役の横で待つ。", en: "No peel means the backline dies" });
-    if (comp.primary === "brawl") weaknesses.push({ ja: "真正面の殴り合い。回復を止められると崩れる。", en: "Anti-heal and high ground break brawl" });
-    if (comp.primary === "poke") weaknesses.push({ ja: "遠くから削ってくる。近づけると弱い。", en: "Poke loses if you close the gap" });
-    if (comp.primary === "bunker") weaknesses.push({ ja: "固まって守りを固める。横や上から崩す。", en: "Hack, burrow, and air collapse bunker" });
-    if (comp.primary === "sniper") weaknesses.push({ ja: "遠くから頭を狙う。箱の陰を伝って近づく。", en: "Cover and dive mute snipers" });
+    const bits = [];
+    if (have.has("wrecking-ball") && have.has("genji")) bits.push("ボールとゲンジが、回復役へ同時に飛び込む。");
+    else if (have.has("wrecking-ball")) bits.push("ボールが後ろへ転がって叩きつけてくる。");
+    else if (comp.primary === "dive") bits.push("一気に後ろへ飛び込んでくる。回復役の横で待つ。");
+    if (have.has("juno") && (have.has("wrecking-ball") || have.has("genji"))) bits.push("ジュノの黄色い輪が見えたら、その突入が速くなる。");
+    if (have.has("ashe") && have.has("mercy")) bits.push("マーシーがアッシュを上げるので、開けた道を覗くと溶ける。");
+    else if (comp.primary === "sniper" || have.has("ashe")) bits.push("遠くから頭を狙う。箱の陰を伝って近づく。");
+    if (have.has("mercy")) bits.push("味方が倒れても蘇生を踏ませない。");
+    if ((have.has("pharah") || have.has("echo")) && have.has("mercy")) bits.push("空を飛んでくる相手。下だけ見ていると負ける。");
+    if (map && map.key === "route-66" && (have.has("wrecking-ball") || have.has("ashe") || have.has("genji"))) {
+      bits.push("ルート66では砂の上とガソリンスタンド前が危ない。カフェと箱の陰で待つ。");
+    }
+    if (bits.length) weaknesses.push({ ja: bits.join(""), en: bits.join(" ") });
+    if (!weaknesses.length && comp.primary === "flying") weaknesses.push({ ja: "空を飛んでくる相手。下だけ見ていると負ける。", en: "Without hitscan, flyers own the sky" });
+    if (!weaknesses.length && comp.primary === "dive") weaknesses.push({ ja: "一気に後ろへ飛び込んでくる。回復役の横で待つ。", en: "No peel means the backline dies" });
+    if (!weaknesses.length && comp.primary === "brawl") weaknesses.push({ ja: "真正面の殴り合い。回復を止められると崩れる。", en: "Anti-heal and high ground break brawl" });
+    if (!weaknesses.length && comp.primary === "poke") weaknesses.push({ ja: "遠くから削ってくる。近づけると弱い。", en: "Poke loses if you close the gap" });
+    if (!weaknesses.length && comp.primary === "bunker") weaknesses.push({ ja: "固まって守りを固める。横や上から崩す。", en: "Hack, burrow, and air collapse bunker" });
+    if (!weaknesses.length && comp.primary === "sniper") weaknesses.push({ ja: "遠くから頭を狙う。箱の陰を伝って近づく。", en: "Cover and dive mute snipers" });
 
     return {
       comp,

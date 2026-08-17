@@ -35,9 +35,16 @@ def _run(
     realistic: bool = False,
     discord: bool = False,
     hud: bool = False,
+    interior: bool = False,
 ) -> dict:
     img = render_tab_fixture(
-        allies, enemies, map_title="ROUTE 66", self_key=self_key, realistic=realistic, hud=hud
+        allies,
+        enemies,
+        map_title="ROUTE 66",
+        self_key=self_key,
+        realistic=realistic,
+        hud=hud,
+        interior=interior,
     )
     if discord:
         img = img.convert("RGB").resize((1280, 720), Image.Resampling.BILINEAR)
@@ -85,6 +92,12 @@ def _confusion_unit_tests() -> list[str]:
         fails.append("mizuki portrait in support slot was not read as mizuki")
     if match("wuyang", "support") != "wuyang":
         fails.append("wuyang portrait in support slot was not read as wuyang")
+    if match("juno", "support") != "juno":
+        fails.append("juno portrait in support slot was not read as juno")
+    juno = Image.open(portraits / "juno.png").convert("RGB")
+    _, _, juno_csig = _feat_from_image(juno)
+    if _force_confusions("wuyang", juno_csig, "support") != "juno":
+        fails.append(f"juno color did not override wuyang: {juno_csig}")
     wuyang = Image.open(portraits / "wuyang.png").convert("RGB")
     _, _, wuyang_csig = _feat_from_image(wuyang)
     if _force_confusions("mizuki", wuyang_csig, "support") != "wuyang":
@@ -139,6 +152,25 @@ def main() -> int:
     fails.extend(_expect(hud, allies, enemies, "mizuki"))
     if hud["self_key"] == "wuyang":
         fails.append("HUD portrait stole self as wuyang")
+
+    # Real screenshot: dark warehouse TAB, Juno on both teams, Hazard DPS, gold self = Juno.
+    dark_allies = ["sigma", "cassidy", "ashe", "ana", "juno"]
+    dark_enemies = ["wrecking-ball", "genji", "ashe", "mercy", "juno"]
+    dark = _run(dark_allies, dark_enemies, "juno", "dark interior TAB", interior=True, hud=True)
+    fails.extend(_expect(dark, dark_allies, dark_enemies, "juno"))
+    crushed_dark = _run(
+        dark_allies, dark_enemies, "juno", "discord jpeg dark interior", interior=True, hud=True, discord=True
+    )
+    if crushed_dark["enemies"] != dark_enemies:
+        fails.append(f"discord dark enemies {crushed_dark['enemies']} != {dark_enemies}")
+    if crushed_dark["allies"] != dark_allies:
+        fails.append(f"discord dark allies {crushed_dark['allies']} != {dark_allies}")
+    if "wuyang" in crushed_dark["allies"] + crushed_dark["enemies"]:
+        fails.append("juno was read as wuyang on dark TAB")
+    if "emre" in crushed_dark["enemies"] + crushed_dark["allies"]:
+        fails.append("dark TAB invented emre")
+    if len(crushed_dark["allies"]) != 5 or len(crushed_dark["enemies"]) != 5:
+        fails.append(f"dark TAB was not 5+5: {crushed_dark['allies']} / {crushed_dark['enemies']}")
 
     fails.extend(_confusion_unit_tests())
 

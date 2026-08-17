@@ -158,7 +158,9 @@ def _pick_key(
             (float(scores[i]) for i, role in enumerate(roles) if role == prefer_role),
             default=-1.0,
         )
-        if role_best >= best - 0.10:
+        # A near-perfect portrait wins even if the TAB slot guess is wrong
+        # (JPEG can shift Ashe onto a support row). 0.10 used to promote Wuyang.
+        if best < 0.96 and role_best >= best - 0.06:
             top = np.array([int(i) for i in top if roles[int(i)] == prefer_role], dtype=int)
             if len(top) == 0:
                 top = ranked[:8]
@@ -171,7 +173,8 @@ def _pick_key(
         cpen = float(np.linalg.norm(color - colors[i]) / 180.0) * 0.04
         role_pen = 0.0
         if prefer_role and roles[i] != prefer_role:
-            role_pen = 0.11
+            # Near-perfect portrait: keep it (off-role / open queue).
+            role_pen = 0.0 if float(scores[i]) >= 0.97 else 0.11
         # Kiriko is very red on top; Mizuki is green/teal; Emre TAB icons run orange.
         red_pen = abs(float(csig[3] - csigs[i][3])) * 0.08
         grn_pen = abs(float(csig[4] - csigs[i][4])) * 0.10
@@ -216,8 +219,19 @@ def _force_confusions(
     skinfrac = float(csig[9]) if csig.size > 9 else 0.0
     purplefrac = float(csig[10]) if csig.size > 10 else 0.0
     teal = cyanfrac >= 0.14 or (greenfrac >= 0.16 and top_rg < 20)
+    # Juno visor is purple/cyan; Wuyang is an orange face. They cosine-match ~0.93.
+    if key in ("juno", "wuyang"):
+        if purplefrac >= 0.16 or (cyanfrac >= 0.12 and orangefrac < 0.55):
+            return "juno"
+        ashe_s = _score_of(scores, keys, "ashe")
+        wuy_s = _score_of(scores, keys, "wuyang")
+        # Ashe's hat reads orange; do not promote Wuyang over a clearly better Ashe crop.
+        if ashe_s >= 0.90 and ashe_s > wuy_s + 0.03:
+            return "ashe"
+        if prefer_role == "support" and orangefrac >= 0.70 and purplefrac < 0.10:
+            return "wuyang"
     if key in ("kiriko", "mizuki", "wuyang"):
-        if skinfrac >= 0.55 and greenfrac < 0.12 and cyanfrac < 0.12:
+        if prefer_role in (None, "support") and skinfrac >= 0.55 and greenfrac < 0.12 and cyanfrac < 0.12:
             return "wuyang"
         if redfrac >= 0.42 and top_rg > 22 and skinfrac < 0.55:
             return "kiriko"
@@ -236,20 +250,38 @@ def _force_confusions(
     # Role-queue TAB is tank / dps / dps / support / support.
     # In-game Emre icons are warm orange; only rewrite Mauga when Emre is close
     # or the crop itself is orange (preserve a real tank-slot Mauga).
-    if prefer_role == "tank" and key == "emre":
+    if prefer_role == "tank" and key in ("emre", "wuyang", "mercy", "juno"):
         tank = max(
-            (("sigma", _score_of(scores, keys, "sigma")),
-             ("mauga", _score_of(scores, keys, "mauga")),
-             ("hazard", _score_of(scores, keys, "hazard")),
-             ("orisa", _score_of(scores, keys, "orisa"))),
+            (
+                ("wrecking-ball", _score_of(scores, keys, "wrecking-ball")),
+                ("sigma", _score_of(scores, keys, "sigma")),
+                ("mauga", _score_of(scores, keys, "mauga")),
+                ("hazard", _score_of(scores, keys, "hazard")),
+                ("orisa", _score_of(scores, keys, "orisa")),
+                ("dva", _score_of(scores, keys, "dva")),
+                ("winston", _score_of(scores, keys, "winston")),
+            ),
             key=lambda z: z[1],
         )
         if tank[1] > 0:
             return tank[0]
-        return "mauga"
     if prefer_role == "tank" and key in ("sigma", "hazard") and purplefrac < 0.10 and cyanfrac >= 0.10:
         if close_enough("sigma"):
             return "sigma"
+    if prefer_role == "damage" and key in ("wuyang", "juno", "mercy"):
+        dps = max(
+            (
+                ("ashe", _score_of(scores, keys, "ashe")),
+                ("emre", _score_of(scores, keys, "emre")),
+                ("genji", _score_of(scores, keys, "genji")),
+                ("sojourn", _score_of(scores, keys, "sojourn")),
+                ("cassidy", _score_of(scores, keys, "cassidy")),
+                ("venture", _score_of(scores, keys, "venture")),
+            ),
+            key=lambda z: z[1],
+        )
+        if dps[1] > 0:
+            return dps[0]
     if prefer_role == "damage" and key == "mauga" and (orangefrac >= 0.12 or close_enough("emre")):
         return "emre"
     if key in ("mauga", "emre") and prefer_role is None:
@@ -280,7 +312,18 @@ def _complete_tab_rows(rows: list[dict], h: int) -> list[dict]:
     ordered = [r for r in sorted(rows, key=lambda z: z["y0"]) if r["y1"] < int(h * 0.86)]
     if len(ordered) < 4:
         return ordered
-    if len(ordered) >= 6:
+    if len(ordered) >= 8:
+        gaps = [(ordered[i + 1]["y0"] - ordered[i]["y1"], i) for i in range(len(ordered) - 1)]
+        gap, idx = max(gaps)
+        heights = [r["y1"] - r["y0"] for r in ordered]
+        med_h = sorted(heights)[len(heights) // 2]
+        if gap > max(12, 0.55 * med_h):
+            top, bottom = ordered[: idx + 1], ordered[idx + 1 :]
+        else:
+            top, bottom = [r for r in ordered if r["y1"] < int(h * 0.52)], [
+                r for r in ordered if r["y0"] >= int(h * 0.52)
+            ]
+    elif len(ordered) >= 6:
         gaps = [(ordered[i + 1]["y0"] - ordered[i]["y1"], i) for i in range(len(ordered) - 1)]
         gap, idx = max(gaps)
         heights = [r["y1"] - r["y0"] for r in ordered]
@@ -292,9 +335,8 @@ def _complete_tab_rows(rows: list[dict], h: int) -> list[dict]:
                 r for r in ordered if r["y0"] >= int(h * 0.52)
             ]
     else:
-        top, bottom = [r for r in ordered if r["y1"] < int(h * 0.52)], [
-            r for r in ordered if r["y0"] >= int(h * 0.52)
-        ]
+        # 4–5 rows: almost always the ally table only (red rows vanish on dark maps).
+        top, bottom = ordered[:5], []
     top = sorted(top, key=lambda z: z["y0"])[:5]
     if len(top) < 4:
         return ordered
@@ -473,7 +515,28 @@ def _select_tab_hits(hits: list[dict]) -> list[dict]:
             med = sorted(body)[len(body) // 2] if body else med
     if len(ordered) <= 10:
         return ordered
-    return ordered[:10]
+    ys = [h["cy"] for h in ordered]
+    gaps = [(ys[i + 1] - ys[i], i) for i in range(len(ys) - 1)]
+    _gap, idx = max(gaps)
+    top, bot = ordered[: idx + 1], ordered[idx + 1 :]
+    if len(top) >= 4 and len(bot) >= 4:
+        return top[:5] + bot[:5]
+    return ordered[:5] + ordered[-5:]
+
+
+def _dedupe_row_hits(hits: list[dict]) -> list[dict]:
+    """One portrait per TAB row — JPEG can yield two peaks on the same circle."""
+    if len(hits) < 2:
+        return hits
+    ordered = sorted(hits, key=lambda z: (z["cy"], -z["score"]))
+    out: list[dict] = []
+    for hit in ordered:
+        if out and abs(hit["cy"] - out[-1]["cy"]) < max(10, 0.40 * max(hit["size"], out[-1]["size"])):
+            if hit["score"] > out[-1]["score"]:
+                out[-1] = hit
+            continue
+        out.append(hit)
+    return out
 
 
 def _keep_portrait_column(hits: list[dict], w: int) -> list[dict]:
@@ -489,15 +552,45 @@ def _keep_portrait_column(hits: list[dict], w: int) -> list[dict]:
     return sorted(best, key=lambda z: (z["cy"], z["cx"]))
 
 
+def _dedupe_scoreboard_rows(rows: list[dict]) -> list[dict]:
+    """Two nameplate scans can yield the same TAB row a few pixels apart (441 vs 439)."""
+    if len(rows) < 2:
+        return rows
+    ordered = sorted(rows, key=lambda z: (z["y0"], -(z["y1"] - z["y0"])))
+    out: list[dict] = []
+    for row in ordered:
+        cy = (row["y0"] + row["y1"]) / 2
+        if out:
+            prev = out[-1]
+            pcy = (prev["y0"] + prev["y1"]) / 2
+            overlap = min(prev["y1"], row["y1"]) - max(prev["y0"], row["y0"])
+            min_h = min(prev["y1"] - prev["y0"], row["y1"] - row["y0"]) or 1
+            if abs(cy - pcy) < 14 or overlap >= 0.40 * min_h:
+                if (row["y1"] - row["y0"], row.get("lum") or 0) > (
+                    prev["y1"] - prev["y0"],
+                    prev.get("lum") or 0,
+                ):
+                    out[-1] = row
+                continue
+        out.append(row)
+    return out
+
+
 def _annotate_roles(rows: list[dict]) -> None:
     """Stamp role-queue slots. Prefer Y-order 5+5 so a gold self-row is not treated as the enemy tank."""
     ordered = sorted(rows, key=lambda z: z["y0"])
-    if len(ordered) >= 8:
+    top: list[dict] = []
+    bot: list[dict] = []
+    if len(ordered) >= 10:
+        # Extra mid-table duplicates must not shift Ashe onto support.
+        top, bot = ordered[:5], ordered[-5:]
+    elif len(ordered) >= 8:
         gaps = [(ordered[i + 1]["y0"] - ordered[i]["y1"], i) for i in range(len(ordered) - 1)]
         _gap, idx = max(gaps)
-        top, bot = ordered[: idx + 1], ordered[idx + 1 :]
+        top, bot = ordered[: idx + 1][:5], ordered[idx + 1 :][:5]
+    if top and bot:
         for group, team in ((top, "ally"), (bot, "enemy")):
-            for i, row in enumerate(group[:5]):
+            for i, row in enumerate(group):
                 row["team"] = team
                 row["prefer_role"] = ROLE_QUEUE[i]
         return
@@ -567,8 +660,10 @@ def _best_in_row(arr: np.ndarray, row: dict, x_lo: int, x_hi: int) -> dict | Non
         return None
 
     def rank(hit: dict) -> tuple:
-        role_bonus = 0.16 if prefer and hit.get("role") == prefer else 0.0
-        return (hit["score"] + role_bonus, hit["margin"])
+        # 0.16 used to let a small Wuyang crop beat a 0.99 Ashe on a mislabeled support row.
+        role_bonus = 0.03 if prefer and hit.get("role") == prefer else 0.0
+        fill_bonus = 0.05 * min(1.0, hit["size"] / max(band_h, 1))
+        return (hit["score"] + role_bonus + fill_bonus, hit["margin"], hit["size"])
 
     return max(cands, key=rank)
 
@@ -595,6 +690,7 @@ def _match_peaks(arr: np.ndarray) -> list[dict]:
     h, w, _ = arr.shape
     x0, x1 = int(w * 0.08), int(w * 0.28)
     var_rows = _variance_rows(arr, x0, x1)
+    var_rows = _dedupe_scoreboard_rows(var_rows)
     var_rows = _assign_row_teams(var_rows)
     _annotate_roles(var_rows)
     picked: list[dict] = []
@@ -611,23 +707,20 @@ def _match_portraits(arr: np.ndarray) -> list[dict]:
     # Full-screen TAB: portraits are on the LEFT of the overlay.
     # Do not scan the right half first — career stats portraits live there.
     regions = [
-        (int(w * 0.10), int(w * 0.50), int(w * 0.10), int(w * 0.26)),
-        (int(w * 0.08), int(w * 0.72), int(w * 0.08), int(w * 0.28)),
+        (int(w * 0.10), int(w * 0.50)),
+        (int(w * 0.08), int(w * 0.72)),
     ]
     unique_rows: list[dict] = []
-    row_x: list[tuple[int, int]] = []
-    seen_rows: list[tuple] = []
-    for rx0, rx1, px0, px1 in regions:
-        for row in _scoreboard_rows(arr, rx0, rx1):
-            sig = (row["y0"] // 8, row.get("team") or "unknown")
-            if sig in seen_rows:
-                continue
-            seen_rows.append(sig)
-            unique_rows.append(row)
-            row_x.append((px0, px1))
+    for rx0, rx1 in regions:
+        unique_rows.extend(_scoreboard_rows(arr, rx0, rx1))
+    unique_rows = _dedupe_scoreboard_rows(unique_rows)
     _annotate_roles(unique_rows)
+    px0, px1 = int(w * 0.08), int(w * 0.28)
     picked: list[dict] = []
-    for row, (px0, px1) in zip(unique_rows, row_x):
+    labeled = sum(1 for row in unique_rows if row.get("prefer_role"))
+    for row in unique_rows:
+        if labeled >= 10 and row.get("prefer_role") is None:
+            continue
         hit = _best_in_row(arr, row, px0, px1)
         if hit:
             picked.append(hit)
@@ -635,6 +728,7 @@ def _match_portraits(arr: np.ndarray) -> list[dict]:
         picked = _merge_hits(picked, _match_peaks(arr))
     picked = [hit for hit in picked if 0.10 * h <= hit["cy"] <= 0.86 * h]
     picked = _keep_portrait_column(picked, w)
+    picked = _dedupe_row_hits(picked)
     picked = _select_tab_hits(picked)
     picked.sort(key=lambda z: (z["cy"], z["cx"]))
     return picked
@@ -659,9 +753,13 @@ def _assign_teams(hits: list[dict]) -> tuple[list[str], list[str], str]:
         return [], [], "unknown"
     top, bottom = _split_clusters(hits, "y")
     left, right = _split_clusters(hits, "x")
-    # Real TAB: allies above, enemies below. Prefer this when both tables exist.
-    if len(top) >= 3 and len(bottom) >= 3:
-        return [h["key"] for h in top], [h["key"] for h in bottom], "tab"
+    # Role-queue TAB is always 5 allies on top, 5 enemies on bottom.
+    if len(top) >= 4 and len(bottom) >= 4:
+        return [h["key"] for h in top[:5]], [h["key"] for h in bottom[:5]], "tab"
+    if len(hits) >= 8:
+        ordered = sorted(hits, key=lambda z: z["cy"])
+        cut = 5 if len(ordered) >= 10 else len(ordered) // 2
+        return [h["key"] for h in ordered[:cut]], [h["key"] for h in ordered[cut:cut + 5]], "tab"
     allies = [h for h in hits if h["team"] == "ally"]
     enemies = [h for h in hits if h["team"] == "enemy"]
     if len(allies) >= 2 and len(enemies) >= 2:
@@ -713,15 +811,24 @@ def _ocr_text(img: Image.Image) -> str:
         return ""
 
 
+def _board_score(board: dict | None) -> int:
+    if not board:
+        return -1
+    enemies = min(5, len(board.get("enemies") or []))
+    allies = min(5, len(board.get("allies") or []))
+    if enemies < 4:
+        return enemies
+    return allies + enemies * 2
+
+
 def read_scoreboard(data: bytes) -> dict:
+    api = None
     try:
         from bot.vision_api import read_with_api
 
         api = read_with_api(data)
-        if api and len(api.get("enemies") or []) >= 2:
-            return api
     except Exception:
-        pass
+        api = None
     img = Image.open(io.BytesIO(data))
     if img.mode == "RGBA":
         bg = Image.new("RGB", img.size, (12, 14, 18))
@@ -751,7 +858,7 @@ def read_scoreboard(data: bytes) -> dict:
         enemies = keys[-5:] if len(keys) >= 8 else keys[:5]
         if not layout or layout == "unknown":
             layout = "ocr"
-    return {
+    local = {
         "allies": allies,
         "enemies": enemies,
         "self_key": self_key,
@@ -761,6 +868,9 @@ def read_scoreboard(data: bytes) -> dict:
         "ocr_text": ocr,
         "hits": hits,
     }
+    if _board_score(api) > _board_score(local):
+        return api
+    return local
 
 
 def render_tab_fixture(
@@ -771,10 +881,18 @@ def render_tab_fixture(
     size: tuple[int, int] = (1920, 1080),
     realistic: bool = False,
     hud: bool = False,
+    interior: bool = False,
 ) -> Image.Image:
     """Synthetic TAB scoreboard used by tests (top blue / bottom red / circular icons)."""
     w, h = size
-    if realistic:
+    if interior:
+        base = Image.new("RGB", (w, h), (28, 22, 18))
+        shade = ImageDraw.Draw(base)
+        shade.rectangle((0, int(h * 0.35), w, int(h * 0.78)), fill=(16, 14, 12))
+        layer = Image.new("RGBA", (w, h), (0, 0, 0, 0))
+        draw = ImageDraw.Draw(layer)
+        draw.rectangle((int(w * 0.08), int(h * 0.08), int(w * 0.92), int(h * 0.92)), fill=(8, 10, 14, 110))
+    elif realistic:
         bg_path = ROOT / "assets" / "maps" / "route-66.jpg"
         if bg_path.exists():
             base = Image.open(bg_path).convert("RGB").resize((w, h), Image.Resampling.LANCZOS)
@@ -794,7 +912,7 @@ def render_tab_fixture(
     draw.text((int(w * 0.72), int(h * 0.07)), map_title, fill=(240, 200, 80, 255))
     draw.text((int(w * 0.72), int(h * 0.10)), "時間 : 6:28", fill=(200, 200, 200, 255))
 
-    row_alpha = 125 if realistic else 255
+    row_alpha = 88 if interior else (125 if realistic else 255)
 
     def paint(keys: list[str], y0: float, y1: float, color: tuple[int, int, int], highlight: str | None):
         rows = max(1, len(keys))

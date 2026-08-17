@@ -91,6 +91,9 @@ def tag_counter(attacker: dict, target: dict) -> tuple[int, list]:
     return best, [r for r in hits if r["score"] >= 3]
 
 
+TRUE_FLYERS = {"pharah", "echo", "jetpack-cat"}
+
+
 def detect_composition(enemy_keys: list[str]) -> dict:
     heroes = [HEROES[k] for k in enemy_keys if k in HEROES]
     counts = {"dive": 0, "poke": 0, "brawl": 0, "bunker": 0, "flying": 0, "sniper": 0, "flank": 0}
@@ -104,19 +107,47 @@ def detect_composition(enemy_keys: list[str]) -> dict:
             counts["brawl"] += 1
         if "bunker" in t or "turret" in t:
             counts["bunker"] += 2
-        if "flyer" in t:
+        if h["key"] in TRUE_FLYERS:
             counts["flying"] += 2
         if "sniper" in t:
             counts["sniper"] += 2
         if "flank" in t:
             counts["flank"] += 1
-    if any("flyer" in (h.get("tags") or []) for h in heroes) and any(
+    if any(h["key"] in TRUE_FLYERS for h in heroes) and any(
         "flyer-synergy" in (h.get("tags") or []) for h in heroes
     ):
         counts["flying"] += 3
     ranked = sorted(counts.items(), key=lambda kv: kv[1], reverse=True)
     primary = ranked[0][0] if ranked[0][1] > 0 else "flex"
     return {"counts": counts, "primary": primary, "heroes": heroes}
+
+
+def describe_comp(enemy_keys: list[str], map_key: str | None = None) -> str:
+    """How this 5-stack actually wins — not a single-tag label like 'flying'."""
+    have = set(k for k in enemy_keys if k in HEROES)
+    bits: list[str] = []
+    if {"wrecking-ball", "genji"} <= have:
+        bits.append("ボールとゲンジが、回復役へ同時に飛び込む。")
+    elif "wrecking-ball" in have:
+        bits.append("ボールが後ろへ転がって叩きつけてくる。")
+    elif "genji" in have or "winston" in have or "dva" in have:
+        bits.append("一気に後ろへ飛び込んでくる。")
+    if "juno" in have and ({"wrecking-ball", "genji", "winston", "dva", "tracer"} & have):
+        bits.append("ジュノの黄色い輪が見えたら、その突入が速くなる。")
+    if {"ashe", "mercy"} <= have:
+        bits.append("マーシーがアッシュを上げるので、開けた道を覗くと溶ける。")
+    elif "ashe" in have or "widowmaker" in have:
+        bits.append("遠くから頭を狙う。箱の陰を伝って近づく。")
+    if "mercy" in have:
+        bits.append("味方が倒れても蘇生を踏ませない。")
+    if {"pharah", "mercy"} <= have or {"echo", "mercy"} <= have:
+        bits.append("空を飛んでくる相手。下だけ見ていると負ける。")
+    if not bits:
+        primary = detect_composition(enemy_keys)["primary"]
+        bits.append(WEAK.get(primary, "構成の穴を突く。"))
+    if map_key == "route-66" and ({"wrecking-ball", "ashe", "genji"} & have):
+        bits.append("ルート66では砂の上とガソリンスタンド前が危ない。カフェと箱の陰で待つ。")
+    return "".join(bits)
 
 
 def map_affinity(hero: dict, mp: dict | None, side: str) -> tuple[int, list[str]]:
@@ -212,7 +243,7 @@ def recommend(my_role: str, enemies: list[str], map_key: str | None, side: str =
     return {
         "comp": comp,
         "comp_label": COMP_LABEL.get(comp["primary"], "ミックス"),
-        "weakness": WEAK.get(comp["primary"], "構成の穴を突く"),
+        "weakness": describe_comp(enemies, map_key) or WEAK.get(comp["primary"], "構成の穴を突く"),
         "picks": ranked[:5],
         "map": mp,
     }

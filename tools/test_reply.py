@@ -78,12 +78,40 @@ def main() -> None:
     assert "立ち回り" in text
     assert "これだけ見とけ" in text
     assert "出すなら" in text
+    assert "敵の狙い" in text
+    assert "ボール" in text
+    assert "空を飛んでくる相手" not in text
+    from bot.engine import describe_comp, detect_composition
+
+    keys = ["wrecking-ball", "genji", "ashe", "mercy", "juno"]
+    assert detect_composition(keys)["primary"] != "flying"
+    story = describe_comp(keys, "route-66")
+    assert "ボール" in story and "ゲンジ" in story
+    assert "ジュノ" in story
+    assert "空を飛んで" not in story
+    assert "ルート66" in story
     assert "CC" not in extras[0].description
     assert "ダイブ" not in extras[0].description
     assert "本線" not in extras[0].description
     assert "クリーンセ" not in extras[0].description
     print("reply ok")
     print(extras[0].description[:280] if extras else "(no extras)")
+
+    incomplete, incomplete_extras, _ = build_reply(
+        {
+            "role": "support",
+            "side": "attack",
+            "map_key": "route-66",
+            "enemies": ["emre", "wuyang"],
+            "allies": ["hazard", "genji", "wuyang"],
+            "self_key": "wuyang",
+        }
+    )
+    incomplete_text = _embed_text(incomplete) + "\n" + "\n".join(_embed_text(e) for e in incomplete_extras)
+    assert not incomplete_extras
+    assert "読めていない" in incomplete_text
+    assert "出すなら" not in incomplete_text
+    print("incomplete ok")
 
 
 if __name__ == "__main__":

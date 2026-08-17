@@ -80,12 +80,14 @@ def merge_parse(caption: str, ocr: str, user_id: int, board: dict | None = None)
     map_key = cap["map_key"] or board.get("map_key") or vis["map_key"]
     if cap["hero_keys"]:
         heroes = cap["hero_keys"][:5]
-    elif len(board.get("enemies") or []) >= 2:
+    elif len(board.get("enemies") or []) >= 4:
         heroes = board["enemies"][:5]
     else:
         heroes = vis["hero_keys"]
         if len(heroes) >= 8:
             heroes = heroes[-5:]
+        elif len(board.get("enemies") or []) >= 2 and not heroes:
+            heroes = board["enemies"][:5]
         else:
             heroes = heroes[:5]
     p["role"] = role
@@ -98,6 +100,7 @@ def merge_parse(caption: str, ocr: str, user_id: int, board: dict | None = None)
         "allies": board.get("allies") or [],
         "self_key": board.get("self_key"),
         "layout": board.get("layout"),
+        "incomplete": len(heroes) < 4 or len(board.get("allies") or []) < 4,
     }
 
 
@@ -153,11 +156,12 @@ def build_reply(state: dict) -> tuple[discord.Embed, list[discord.Embed], list[d
     read_lines.append("敵　" + enemy_txt)
     main.add_field(name="いまの編成", value="\n".join(read_lines)[:1024], inline=False)
 
-    if not enemies:
+    if not enemies or len(enemies) < 4:
         main.add_field(
             name="ヒント",
-            value="敵ヒーローが読めなかった。TAB画面全体（上=味方・下=敵）を送って。"
-            "読めないときはキャプションに `dps route66 wrecking-ball genji ashe mercy juno` のように書いて再投稿して。",
+            value="敵5人が読めていないので、立ち回りは出さない。"
+            "TAB画面全体（上=味方5・下=敵5）を送るか、キャプションに書いて再投稿して。\n"
+            "例: `support route66 wrecking-ball genji ashe mercy juno`",
             inline=False,
         )
         main.set_footer(text="ロール変更は /role　例: /role tank")
@@ -166,17 +170,15 @@ def build_reply(state: dict) -> tuple[discord.Embed, list[discord.Embed], list[d
     bits = [rec["weakness"]]
     if queue_note:
         bits.append(queue_note)
+    main.add_field(name="敵の狙い", value="\n".join(bits)[:1024], inline=False)
+    cds = watch_lines(state["enemies"])
+    if cds:
+        main.add_field(name="これだけ見とけ", value="\n".join(cds)[:1024], inline=False)
 
     top = picks[0] if picks else None
     pick = top["hero"] if top else None
     plan = fight_plan(None, state["map_key"], state["side"], state["enemies"], pick_hero=pick)
     ai_body = compose_advice(plan, rec, state) if (plan.get("hero") or pick) else None
-
-    if not ai_body:
-        main.add_field(name="敵の狙い", value="\n".join(bits)[:1024], inline=False)
-        cds = watch_lines(state["enemies"])
-        if cds:
-            main.add_field(name="これだけ見とけ", value="\n".join(cds)[:1024], inline=False)
 
     if plan.get("where") or plan.get("threats") or pick:
         hero = plan.get("hero") or pick
