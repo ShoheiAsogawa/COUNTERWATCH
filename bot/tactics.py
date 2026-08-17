@@ -52,7 +52,7 @@ def _station_lines(spots: dict, side: str) -> list[str]:
     for st in spots.get("stations") or []:
         bit = st.get(sk) or st.get("attack") or ""
         if bit:
-            out.append(f"**{st['name']}** — {bit}")
+            out.append(bit)
     return out[:3]
 
 
@@ -64,8 +64,8 @@ def fight_plan(
     *,
     pick_hero: dict | None = None,
 ) -> dict:
-    """If self_key is missing, describe the recommended pick_hero instead."""
-    me = HEROES.get(self_key or "") or pick_hero
+    """Advice is for the recommended pick. self_key is only a fallback."""
+    me = pick_hero or HEROES.get(self_key or "")
     if not me:
         return {"title": "立ち回り", "where": "", "stations": [], "threats": [], "combo": "", "lose": "", "lines": []}
     mp = MAPS.get(map_key) if map_key else None
@@ -102,28 +102,44 @@ def _lose_line(me: dict, home: str, enemies: list[dict]) -> str:
     keys = {e["key"] for e in enemies}
     tags = set(me.get("tags") or [])
     if "wrecking-ball" in keys and home in ("cover", "high"):
-        return "開けた場所でスキルを先に使うと、次のパイルか刃で落ちる。"
+        return "砂の上の開けた場所でスキルを先に使うと、次の叩きつけか刀で倒される。"
     if "widowmaker" in keys or "ashe" in keys:
-        return "本線を覗いた瞬間が負け。箱と建物の外に出ない。"
+        return "真正面の道を覗いた瞬間が負け。箱と建物の外に出ない。"
     if any("flyer" in (e.get("tags") or []) for e in enemies) and "hitscan" not in tags:
         return "空を無視して下だけ見ると試合を取られる。"
     if me.get("role") == "support":
-        return "単独で前に出ない。クリーンセを最初のダイブより先に使わない。"
-    return "人数が揃う前に本線へ出ない。"
+        return "一人で前に出ない。回復スキルは、飛び込まれたときに使う。"
+    return "味方が揃う前に、開けた道へ出ない。"
 
 
 def plan_embed_body(plan: dict) -> str:
     parts = []
+    hero = plan.get("hero")
+    if hero:
+        parts.append(f"出すなら **{hero['nameJa']}**。")
     if plan.get("where"):
-        parts.append(f"**今いる場所**\n{plan['where']}")
+        parts.append(f"**どこに立つか**\n{plan['where']}")
+    first = []
     if plan.get("stations"):
-        parts.append("**地点**\n" + "\n".join(f"• {x}" for x in plan["stations"]))
+        first.append(plan["stations"][0])
     if plan.get("combo"):
-        parts.append(f"**この組み合わせ**\n{plan['combo']}")
+        first.append(plan["combo"])
+    if first:
+        parts.append("**最初にやること**\n" + "\n".join(first[:2]))
     if plan.get("threats"):
-        parts.append("**相手のピックへの返し**\n" + "\n".join(plan["threats"]))
-    if plan.get("play"):
-        parts.append(f"**自分のキット**\n{plan['play']}")
+        parts.append("**敵の対処**\n" + "\n".join(plan["threats"][:3]))
     if plan.get("lose"):
-        parts.append(f"**これをやると負ける**\n{plan['lose']}")
+        parts.append(f"**やってはいけないこと**\n{plan['lose']}")
     return "\n\n".join(parts)[:4096]
+
+
+def watch_lines(enemy_keys: list[str]) -> list[str]:
+    out = []
+    for key in enemy_keys:
+        line = TD.WATCH.get(key)
+        if not line:
+            continue
+        hero = HEROES.get(key)
+        name = hero["nameJa"] if hero else key
+        out.append(f"・{name}：{line}")
+    return out[:4]

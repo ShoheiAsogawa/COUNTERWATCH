@@ -42,16 +42,16 @@
     const tags = new Set(hero.tags || []);
     const traits = new Set((map && map.traits) || []);
     if (rec.comp.primary === "flying" && tags.has("hitscan")) {
-      lines.push(ja ? "空の軌道は本線の真上ではなく、やや後ろの高所から切る。落ちたらすぐ次の箱へ。" : "Cut flyers from off-angle high ground, then relocate.");
+      lines.push(ja ? "空は真正面の真上ではなく、少し後ろの高い場所から撃つ。落ちたらすぐ次の箱へ。" : "Cut flyers from off-angle high ground, then relocate.");
     }
     if (rec.comp.primary === "dive" && (tags.has("anti-dive") || tags.has("sleeper") || tags.has("cc"))) {
-      lines.push(ja ? "自分から前に出ない。着地地点（サポの横）でCCを待つ。" : "Don't walk up. Hold CC at the landing spot.");
+      lines.push(ja ? "自分から前に出ない。飛び込まれた場所（回復役の横）で、スタンや眠りを待つ。" : "Don't walk up. Hold CC at the landing spot.");
     }
     if (rec.comp.primary === "brawl" && tags.has("antiheal")) {
-      lines.push(ja ? "最初のグレ／アンチをタンク足下に。近接の回復勝負を先に切る。" : "Dump anti-heal on the tank at the start of brawl.");
+      lines.push(ja ? "殴り合いが始まったら、まずタンクの足元に回復止めを入れる。" : "Dump anti-heal on the tank at the start of brawl.");
     }
     if (rec.comp.primary === "sniper" && (tags.has("dive") || tags.has("flank"))) {
-      lines.push(ja ? "本線を歩かない。壁の裏から高所のスナイパーへ。" : "Don't take the main. Wall-path onto the sniper perch.");
+      lines.push(ja ? "開けた道は歩かない。壁の裏から、高い場所のスナイパーへ回る。" : "Don't take the main. Wall-path onto the sniper perch.");
     }
     if (traits.has("environmental")) {
       lines.push(ja ? "端と穴を背にしない。内側の壁に沿って歩く。" : "Don't put pits at your back. Hug inner walls.");
@@ -65,8 +65,7 @@
   function fightPlan(state, rec) {
     const ja = (state.lang || "ja") !== "en";
     const T = (OW.tactics || {});
-    const meKey = inferSelf(state, rec);
-    const me = meKey ? Engine.heroByKey(meKey) : (rec.picks && rec.picks[0] && rec.picks[0].hero);
+    const me = rec.picks && rec.picks[0] && rec.picks[0].hero;
     if (!me) return null;
     const map = rec.map;
     const spots = (T.mapSpots && T.mapSpots[state.mapKey]) || T.defaultSpots || {};
@@ -102,16 +101,8 @@
       threats,
       combo,
       play: me.play || "",
-      lose: ja ? "人数が揃う前に本線の開放へ出ない。" : "Don't walk the open main before you have numbers.",
+      lose: ja ? "味方が揃う前に、開けた道へ出ない。" : "Don't walk the open main before you have numbers.",
     };
-  }
-
-  function inferSelf(state, rec) {
-    if (state.selfKey) return state.selfKey;
-    const allies = (state.allies || []).map(Engine.heroByKey).filter(Boolean);
-    const same = allies.filter((h) => h.role === state.myRole);
-    if (same.length) return same[same.length - 1].key;
-    return null;
   }
 
   function danger(me, enemy) {
@@ -155,7 +146,7 @@
     return {
       map: mapBlock,
       enemy: {
-        title: ja ? "敵の勝ち筋" : "Their win condition",
+        title: ja ? "敵の狙い" : "Their win condition",
         names: enemyNames,
         style: rec.compLabel[lang],
         hole,

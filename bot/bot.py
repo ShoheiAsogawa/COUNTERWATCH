@@ -18,15 +18,13 @@ load_dotenv(ROOT / ".env")
 
 from bot.engine import (  # noqa: E402
     HEROES,
-    cd_lines,
     map_shot_path,
-    movement_lines,
     parse_text,
     portrait_path,
     recommend,
 )
 from bot.llm import polish_fight_plan  # noqa: E402
-from bot.tactics import fight_plan, plan_embed_body  # noqa: E402
+from bot.tactics import fight_plan, plan_embed_body, watch_lines  # noqa: E402
 from bot.updater import sync_from_github  # noqa: E402
 from bot.vision import read_scoreboard  # noqa: E402
 
@@ -109,6 +107,7 @@ def build_reply(state: dict) -> tuple[discord.Embed, list[discord.Embed], list[d
     picks = rec["picks"]
     enemies = rec["comp"]["heroes"]
     files: list[discord.File] = []
+    extras: list[discord.Embed] = []
     used_names = set()
 
     def attach(path: Path, name: str) -> str | None:
@@ -118,28 +117,24 @@ def build_reply(state: dict) -> tuple[discord.Embed, list[discord.Embed], list[d
         files.append(discord.File(path, filename=name))
         return f"attachment://{name}"
 
-    role_ja = {"tank": "タンク", "damage": "ダメージ", "support": "サポート"}[state["role"]]
-    side_ja = {"attack": "攻撃", "defend": "防衛", "flex": "フレックス"}[state["side"]]
     enemy_txt = " · ".join(h["nameJa"] for h in enemies) or "（編成が読めませんでした）"
-    self_h = HEROES.get(state.get("self_key") or "")
     ally_keys = state.get("allies") or []
     tank_n = sum(1 for k in ally_keys if HEROES.get(k, {}).get("role") == "tank")
-    queue_note = "オープンキュー編成（タンクが2人）" if tank_n >= 2 else ""
+    queue_note = "タンクが2人いる編成です。" if tank_n >= 2 else ""
 
     main = discord.Embed(
         title="COUNTERWATCH",
         color=0xF99E1A,
-        description="TABスクショの上段＝味方・下段＝敵として読み、今の立ち回りを返します。",
+        description="敵の編成に対して、どこに立って何をするかを返します。",
     )
     if mp:
+        layout = (mp.get("coach") or {}).get("layout") or mp.get("noteJa") or ""
         main.add_field(
-            name="🗺️ マップの読み",
+            name="マップ",
             value="\n".join(
                 x for x in [
-                    f"**{mp['nameJa']}**（{' / '.join(mp.get('modeJa') or mp.get('modes') or [])}）",
-                    (mp.get("coach") or {}).get("layout") or mp.get("noteJa") or "",
-                    *(((mp.get("coach") or {}).get("points") or [])[:3]),
-                    (mp.get("coach") or {}).get("move") or "",
+                    f"**{mp['nameJa']}**",
+                    layout,
                 ]
                 if x
             )[:1024],
@@ -150,20 +145,13 @@ def build_reply(state: dict) -> tuple[discord.Embed, list[discord.Embed], list[d
         if url:
             main.set_thumbnail(url=url)
 
-    you = f"あなたは **{self_h['nameJa']}**（{role_ja}）" if self_h else f"{role_ja} / {side_ja}"
     read_lines = []
     if ally_keys:
         read_lines.append(
-            "味方 " + " · ".join(HEROES[k]["nameJa"] for k in ally_keys if k in HEROES)
+            "味方　" + " · ".join(HEROES[k]["nameJa"] for k in ally_keys if k in HEROES)
         )
-    if enemies:
-        read_lines.append("敵 " + enemy_txt)
-    else:
-        read_lines.append("敵 （編成が読めませんでした）")
-    if self_h:
-        read_lines.append("自分 " + self_h["nameJa"])
-    if read_lines:
-        main.add_field(name="スクショ読み", value="\n".join(read_lines)[:1024], inline=False)
+    read_lines.append("敵　" + enemy_txt)
+    main.add_field(name="いまの編成", value="\n".join(read_lines)[:1024], inline=False)
 
     if not enemies:
         main.add_field(
@@ -175,30 +163,33 @@ def build_reply(state: dict) -> tuple[discord.Embed, list[discord.Embed], list[d
         main.set_footer(text="ロール変更は /role　例: /role tank")
         return main, extras, files
 
-    bits = [f"**{rec['comp_label']}**　{you}"]
+    bits = [rec["weakness"]]
     if queue_note:
         bits.append(queue_note)
-    bits.append(enemy_txt)
-    bits.append(rec["weakness"])
-    main.add_field(
-        name="敵の勝ち筋",
-        value="\n".join(bits)[:1024],
-        inline=False,
-    )
+    main.add_field(name="敵の狙い", value="\n".join(bits)[:1024], inline=False)
 
-    if enemies:
-        cds = cd_lines(enemies)
-        if cds:
-            main.add_field(name="数えるクールタイム", value="\n".join(cds)[:1024], inline=False)
+    cds = watch_lines(state["enemies"])
+    if cds:
+        main.add_field(name="これだけ見とけ", value="\n".join(cds)[:1024], inline=False)
 
-    extras: list[discord.Embed] = []
-    plan = fight_plan(state.get("self_key"), state["map_key"], state["side"], state["enemies"], pick_hero=(picks[0]["hero"] if picks else None))
-    if plan.get("where") or plan.get("threats"):
-        hero = plan.get("hero")
+    top = picks[0] if picks else None
+    pick = top["hero"] if top else None
+    plan = fight_plan(None, state["map_key"], state["side"], state["enemies"], pick_hero=pick)
+    if plan.get("where") or plan.get("threats") or pick:
+        hero = plan.get("hero") or pick
         img = attach(portrait_path(hero["key"]), f"{hero['key']}.png") if hero else None
         body = polish_fight_plan(plan, state) or plan_embed_body(plan)
+        if pick:
+            why = " / ".join((top.get("reasons") or [])[:2])
+            lead = f"出すなら **{pick['nameJa']}**。"
+            if why:
+                lead += why
+            if "出すなら" not in (body or ""):
+                body = lead + "\n\n" + (body or "")
+            elif why:
+                body = body.replace(f"出すなら **{pick['nameJa']}**。", lead, 1)
         fight = discord.Embed(
-            title=f"こう戦え — {plan['title']}",
+            title="立ち回り",
             description=body,
             color=0x3CE0A0,
         )
@@ -206,53 +197,20 @@ def build_reply(state: dict) -> tuple[discord.Embed, list[discord.Embed], list[d
             fight.set_thumbnail(url=img)
         extras.append(fight)
 
-    if picks:
-        top = picks[0]
-        h = top["hero"]
-        # Already playing this hero: skip "switch to X" as the lead card.
-        if not state.get("self_key") or h["key"] != state.get("self_key"):
-            img = attach(portrait_path(h["key"]), f"{h['key']}.png")
-            move = movement_lines(h, rec, state["side"])
-            specs = [f"HP {h.get('hp')}"]
-            for a in (h.get("abilities") or []):
-                if a.get("cd"):
-                    specs.append(f"{a['nameJa']} {a['cd']}")
-            body = "\n".join(
-                [
-                    f"**{h['nameJa']}**（{h['name']}）  `{top['score']}`",
-                    *top["reasons"][:3],
-                    "",
-                    "**こう動け**",
-                    *[f"• {x}" for x in move],
-                    "",
-                    " / ".join(specs[:5]),
-                ]
-            )[:4096]
-            title = "乗り換え候補" if state.get("self_key") else "今出すヒーロー"
-            pick_embed = discord.Embed(title=title, description=body, color=0xF99E1A)
-            if img:
-                pick_embed.set_image(url=img)
-            extras.append(pick_embed)
-
-        for i, row in enumerate(picks[1:3], start=2):
+    if len(picks) > 1:
+        alt_lines = []
+        for row in picks[1:3]:
             hh = row["hero"]
-            if hh["key"] == state.get("self_key"):
-                continue
-            thumb = attach(portrait_path(hh["key"]), f"{hh['key']}.png")
-            e = discord.Embed(
-                title=f"{i}. {hh['nameJa']}",
-                description=f"{hh['name']}　`{row['score']}`\n{row['reasons'][0] if row['reasons'] else ''}"[:2048],
-                color=0x5865F2,
+            why = row["reasons"][0] if row["reasons"] else ""
+            alt_lines.append(f"**{hh['nameJa']}**　{why}".strip())
+        if alt_lines:
+            extras.append(
+                discord.Embed(
+                    title="ほかの候補",
+                    description="\n".join(alt_lines)[:2048],
+                    color=0x5865F2,
+                )
             )
-            if thumb:
-                e.set_thumbnail(url=thumb)
-            extras.append(e)
-    elif not extras:
-        main.add_field(
-            name="ヒント",
-            value="ヒーローが読めませんでした。TAB画面全体を送るか、キャプションに `dps route66 wrecking-ball genji ashe mercy juno` のように書いて再投稿してください。",
-            inline=False,
-        )
 
     main.set_footer(text="ロール変更は /role　例: /role tank")
     return main, extras, files
@@ -339,7 +297,7 @@ async def on_message(message: discord.Message):
     await reply_analysis(message.channel, state, mention=message)
 
 
-@bot.tree.command(name="role", description="自分のロールを覚える（tank / damage / support）")
+@bot.tree.command(name="role", description="使うロールを覚える（tank / damage / support）")
 @app_commands.describe(role="今プレイするロール")
 @app_commands.choices(
     role=[

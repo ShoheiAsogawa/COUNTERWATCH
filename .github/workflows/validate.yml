@@ -23,4 +23,6 @@ jobs:
       - name: TABスコアボードの読み取り
         run: python3 tools/test_tab_vision.py
       - name: 立ち回りプラン
-        run: python3 -c "from bot.tactics import fight_plan; p=fight_plan('kiriko','route-66','attack',['wrecking-ball','genji','ashe','mercy','juno']); assert 'カフェ' in p['where']; assert 'ボール' in p['combo']; print(p['title'], p['combo'][:40])"
+        run: python3 -c "from bot.tactics import fight_plan, plan_embed_body; p=fight_plan('kiriko','route-66','attack',['wrecking-ball','genji','ashe','mercy','juno']); assert 'カフェ' in p['where']; assert 'ボール' in p['combo']; b=plan_embed_body(p); assert 'どこに立つか' in b; assert '自分' not in b; print(p['title'], p['combo'][:40])"
+      - name: Discord返信の文言
+        run: python3 tools/test_reply.py

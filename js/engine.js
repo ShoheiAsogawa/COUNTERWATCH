@@ -64,13 +64,13 @@
   }
 
   const COMP_LABEL = {
-    dive: { ja: "ダイブ", en: "Dive" },
-    poke: { ja: "ポーク", en: "Poke" },
-    brawl: { ja: "ブロウル", en: "Brawl" },
-    bunker: { ja: "バンカー", en: "Bunker" },
-    flying: { ja: "空中", en: "Flying" },
-    sniper: { ja: "スナイプ", en: "Sniper" },
-    flank: { ja: "フランカー", en: "Flank" },
+    dive: { ja: "飛び込み", en: "Dive" },
+    poke: { ja: "遠くから削る", en: "Poke" },
+    brawl: { ja: "近距離の殴り合い", en: "Brawl" },
+    bunker: { ja: "固まって守る", en: "Bunker" },
+    flying: { ja: "空を飛ぶ", en: "Flying" },
+    sniper: { ja: "スナイパー", en: "Sniper" },
+    flank: { ja: "横から来る", en: "Flank" },
     flex: { ja: "ミックス", en: "Mix" },
   };
 
@@ -196,20 +196,19 @@
           rules: hit.rules,
         });
         if (hit.score >= 4) {
-          reasons.push(`${enemy.nameJa}に対して明確なカウンター`);
+          reasons.push(`${enemy.nameJa}に強い`);
         } else if (hit.score >= 3) {
-          const rule = hit.rules[0];
-          reasons.push(rule ? `${enemy.nameJa}：${rule.ja}` : `${enemy.nameJa}との相性が良い`);
+          reasons.push(`${enemy.nameJa}との相性がいい`);
         }
         if (threat >= 4) {
-          reasons.push(`注意：${enemy.nameJa}から強くカウンターされる`);
+          reasons.push(`${enemy.nameJa}には注意`);
           score -= 2;
         }
       }
 
       if (answers.includes(hero.key)) {
         score += 6;
-        reasons.push(`${COMP_LABEL[comp.primary].ja}構成への定番回答`);
+        reasons.push("この敵の戦い方に向いている");
       }
 
       const mapFit = mapAffinity(hero, map, side);
@@ -218,18 +217,18 @@
 
       if (comp.primary === "flying" && hero.tags.includes("hitscan")) {
         score += 5;
-        reasons.push("空中構成にはヒットスキャンが最優先");
+        reasons.push("空を飛ぶ相手には、弾がまっすぐ飛ぶヒーロー");
       }
       if (comp.counts.flying >= 2 && hero.tags.includes("hitscan")) {
         score += 6;
-        reasons.push("フォマシー／空中にはヒットスキャン");
+        reasons.push("空の2人には、弾がまっすぐ飛ぶヒーロー");
       }
       if (comp.primary === "dive" && (hero.tags.includes("anti-dive") || hero.tags.includes("cc") || hero.tags.includes("sleeper") || hero.tags.includes("anti-flank"))) {
         score += 4;
       }
       if (comp.primary === "sniper" && (hero.tags.includes("dive") || hero.tags.includes("flank"))) {
         score += 4;
-        reasons.push("スナイパー裏を取るダイブ／フランカー");
+        reasons.push("スナイパーの後ろに回れる");
       }
 
       const uniq = [];
@@ -259,12 +258,12 @@
     }
 
     const weaknesses = [];
-    if (comp.primary === "flying") weaknesses.push({ ja: "ヒットスキャン不足だと空に試合を支配される", en: "Without hitscan, flyers own the sky" });
-    if (comp.primary === "dive") weaknesses.push({ ja: "CC・アンチダイブがないとバックラインが溶ける", en: "No peel means the backline dies" });
-    if (comp.primary === "brawl") weaknesses.push({ ja: "アンチヒールと頭上火力でブロウルは崩せる", en: "Anti-heal and high ground break brawl" });
-    if (comp.primary === "poke") weaknesses.push({ ja: "接近され情報と距離を失うとポークは負ける", en: "Poke loses if you close the gap" });
-    if (comp.primary === "bunker") weaknesses.push({ ja: "ハック・地中・頭上でバンカーは崩壊する", en: "Hack, burrow, and air collapse bunker" });
-    if (comp.primary === "sniper") weaknesses.push({ ja: "遮蔽とダイブでスナイパーを沈黙させられる", en: "Cover and dive mute snipers" });
+    if (comp.primary === "flying") weaknesses.push({ ja: "空を飛んでくる相手。下だけ見ていると負ける。", en: "Without hitscan, flyers own the sky" });
+    if (comp.primary === "dive") weaknesses.push({ ja: "一気に後ろへ飛び込んでくる。回復役の横で待つ。", en: "No peel means the backline dies" });
+    if (comp.primary === "brawl") weaknesses.push({ ja: "真正面の殴り合い。回復を止められると崩れる。", en: "Anti-heal and high ground break brawl" });
+    if (comp.primary === "poke") weaknesses.push({ ja: "遠くから削ってくる。近づけると弱い。", en: "Poke loses if you close the gap" });
+    if (comp.primary === "bunker") weaknesses.push({ ja: "固まって守りを固める。横や上から崩す。", en: "Hack, burrow, and air collapse bunker" });
+    if (comp.primary === "sniper") weaknesses.push({ ja: "遠くから頭を狙う。箱の陰を伝って近づく。", en: "Cover and dive mute snipers" });
 
     return {
       comp,

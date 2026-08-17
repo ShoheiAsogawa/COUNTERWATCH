@@ -185,7 +185,7 @@
       banner.innerHTML = `<strong>${t("敵を5人入れるか、スクショを貼ってください", "Add 5 enemies or paste a screenshot")}</strong>`;
     } else {
       banner.innerHTML = `<span class="comp-tag">${rec.compLabel[state.lang]}</span>
-        <strong>${t("敵の勝ち筋", "Their win condition")}</strong>
+        <strong>${t("敵の狙い", "Their win condition")}</strong>
         <span>${(rec.weaknesses[0] && rec.weaknesses[0][state.lang]) || t("構成の穴を突く", "Punish the holes in this comp")}</span>`;
     }
   }
@@ -206,12 +206,13 @@
     const stations = (plan.stations || []).map((s) => `<li>${s}</li>`).join("");
     const threats = (plan.threats || []).map((s) => `<li>${s}</li>`).join("");
     box.innerHTML = `
-      <h3>${t("こう戦え", "Fight plan")} — ${plan.title}</h3>
-      ${plan.where ? `<p><strong>${t("今いる場所", "Stand here")}</strong> ${plan.where}</p>` : ""}
+      <h3>${t("立ち回り", "Fight plan")}</h3>
+      ${plan.hero ? `<p>出すなら <strong>${heroName(plan.hero)}</strong></p>` : ""}
+      ${plan.where ? `<p><strong>${t("どこに立つか", "Stand here")}</strong> ${plan.where}</p>` : ""}
+      ${plan.combo ? `<p><strong>${t("最初にやること", "First fight")}</strong> ${plan.combo}</p>` : ""}
       ${stations ? `<ul>${stations}</ul>` : ""}
-      ${plan.combo ? `<p><strong>${t("この組み合わせ", "This combo")}</strong> ${plan.combo}</p>` : ""}
-      ${threats ? `<p><strong>${t("相手のピックへの返し", "Answers")}</strong></p><ul>${threats}</ul>` : ""}
-      ${plan.play ? `<p>${plan.play}</p>` : ""}
+      ${threats ? `<p><strong>${t("敵の対処", "Answers")}</strong></p><ul>${threats}</ul>` : ""}
+      ${plan.lose ? `<p><strong>${t("やってはいけないこと", "Don't")}</strong> ${plan.lose}</p>` : ""}
     `;
   }
 

@@ -36,13 +36,13 @@ def reload_from_disk() -> None:
     apply_knowledge(json.loads(_KNOWLEDGE_PATH.read_text(encoding="utf-8")))
 
 COMP_LABEL = {
-    "dive": "ダイブ",
-    "poke": "ポーク",
-    "brawl": "ブロウル",
-    "bunker": "バンカー",
-    "flying": "空中",
-    "sniper": "スナイプ",
-    "flank": "フランカー",
+    "dive": "飛び込み",
+    "poke": "遠くから削る",
+    "brawl": "近距離の殴り合い",
+    "bunker": "固まって守る",
+    "flying": "空を飛ぶ",
+    "sniper": "スナイパー",
+    "flank": "横から来る",
     "flex": "ミックス",
 }
 
@@ -57,12 +57,12 @@ COMP_ANSWERS = {
 }
 
 WEAK = {
-    "flying": "ヒットスキャン不足だと空に試合を支配される",
-    "dive": "CC・アンチダイブがないとバックラインが溶ける",
-    "brawl": "アンチヒールと頭上火力でブロウルは崩せる",
-    "poke": "接近され情報と距離を失うとポークは負ける",
-    "bunker": "ハック・地中・頭上でバンカーは崩壊する",
-    "sniper": "遮蔽とダイブでスナイパーを沈黙させられる",
+    "flying": "空を飛んでくる相手。下だけ見ていると負ける。",
+    "dive": "一気に後ろへ飛び込んでくる。回復役の横で待つ。",
+    "brawl": "真正面の殴り合い。回復を止められると崩れる。",
+    "poke": "遠くから削ってくる。近づけると弱い。",
+    "bunker": "固まって守りを固める。横や上から崩す。",
+    "sniper": "遠くから頭を狙う。箱の陰を伝って近づく。",
 }
 
 
@@ -134,16 +134,16 @@ def map_affinity(hero: dict, mp: dict | None, side: str) -> tuple[int, list[str]
             if pts >= 2:
                 reasons.append(text)
 
-    bump(traits.intersection({"longsight"}) and tags.intersection({"sniper", "hitscan", "long-range"}), 4, f"{mp['nameJa']}は長視線。{hero['nameJa']}の射程が刺さる")
-    bump("choke" in traits and tags.intersection({"barrier", "spam", "freeze", "brawl"}), 3, f"チョークで{hero['nameJa']}のエリア制御が強い")
-    bump("vertical" in traits and (tags.intersection({"flyer", "mobile"}) or hero["key"] in ("winston", "juno", "dva")), 3, "高低差で機動力が活きる")
-    bump("environmental" in traits and (hero["key"] in ("lucio", "junkrat", "hazard", "pharah") or "boop" in tags), 3, "崖・井戸があり環境キルが取りやすい")
-    bump("close" in traits and tags.intersection({"brawl", "melee", "tankbuster", "beam"}), 3, "近接マップで近距離キットが強い")
-    bump("open" in traits and "sniper" in tags, 3, "開放マップでスナイプが通りやすい")
-    bump("flashpoint" in traits and tags.intersection({"mobile", "speed", "flank"}), 3, "フラッシュポイントはローテ性能が勝つ")
-    bump("clash" in traits and tags.intersection({"brawl", "melee", "barrier"}), 3, "クラッシュは超近接ブロウル")
-    bump("longsight" in traits and "melee" in tags and "mobile" not in tags, -3, "長視線は近接に厳しい")
-    bump("close" in traits and "sniper" in tags, -3, "近接マップでスナイパーは落ちる")
+    bump(traits.intersection({"longsight"}) and tags.intersection({"sniper", "hitscan", "long-range"}), 4, f"{mp['nameJa']}は遠くが見やすい。{hero['nameJa']}の射程が合う")
+    bump("choke" in traits and tags.intersection({"barrier", "spam", "freeze", "brawl"}), 3, f"狭い入口で{hero['nameJa']}が強い")
+    bump("vertical" in traits and (tags.intersection({"flyer", "mobile"}) or hero["key"] in ("winston", "juno", "dva")), 3, "高い場所と低い場所の差を活かせる")
+    bump("environmental" in traits and (hero["key"] in ("lucio", "junkrat", "hazard", "pharah") or "boop" in tags), 3, "崖や穴に落とせる")
+    bump("close" in traits and tags.intersection({"brawl", "melee", "tankbuster", "beam"}), 3, "近い距離のマップで強い")
+    bump("open" in traits and "sniper" in tags, 3, "開けたマップでスナイパーが通りやすい")
+    bump("flashpoint" in traits and tags.intersection({"mobile", "speed", "flank"}), 3, "ポイントがよく変わるので、移動が速いと有利")
+    bump("clash" in traits and tags.intersection({"brawl", "melee", "barrier"}), 3, "狭い場所での殴り合い向き")
+    bump("longsight" in traits and "melee" in tags and "mobile" not in tags, -3, "遠くが見えるマップは近接に厳しい")
+    bump("close" in traits and "sniper" in tags, -3, "近い距離のマップではスナイパーは落ちる")
     if side == "attack" and tags.intersection({"dive", "flank", "speed"}):
         score += 1
     if side == "defend" and tags.intersection({"bunker", "barrier", "turret", "sniper"}):
@@ -166,37 +166,36 @@ def recommend(my_role: str, enemies: list[str], map_key: str | None, side: str =
         reasons = []
         for enemy in enemy_heroes:
             direct = explicit_counter(hero["key"], enemy["key"])
-            tagged, rules = tag_counter(hero, enemy)
+            tagged, _ = tag_counter(hero, enemy)
             power = max(direct, tagged)
             threat_d = explicit_counter(enemy["key"], hero["key"])
             threat_t, _ = tag_counter(enemy, hero)
             threat = max(threat_d, threat_t * 0.7)
             score += power * 4.6 - threat * 3.4
             if power >= 4:
-                reasons.append(f"{enemy['nameJa']}に対して明確なカウンター")
+                reasons.append(f"{enemy['nameJa']}に強い")
             elif power >= 3:
-                rule = rules[0] if rules else None
-                reasons.append(f"{enemy['nameJa']}：{rule['ja']}" if rule else f"{enemy['nameJa']}との相性が良い")
+                reasons.append(f"{enemy['nameJa']}との相性がいい")
             if threat >= 4:
-                reasons.append(f"注意：{enemy['nameJa']}から強くカウンターされる")
+                reasons.append(f"{enemy['nameJa']}には注意")
                 score -= 2
         if hero["key"] in answers:
             score += 6
-            reasons.append(f"{COMP_LABEL[comp['primary']]}構成への定番回答")
+            reasons.append("この敵の戦い方に向いている")
         fit, map_reasons = map_affinity(hero, mp, side)
         score += fit * 1.6
         reasons.extend(map_reasons[:2])
         if comp["primary"] == "flying" and "hitscan" in (hero.get("tags") or []):
             score += 5
-            reasons.append("空中構成にはヒットスキャンが最優先")
+            reasons.append("空を飛ぶ相手には、弾がまっすぐ飛ぶヒーロー")
         if comp["counts"]["flying"] >= 2 and "hitscan" in (hero.get("tags") or []):
             score += 6
-            reasons.append("フォマシー／空中にはヒットスキャン")
+            reasons.append("空の2人には、弾がまっすぐ飛ぶヒーロー")
         if comp["primary"] == "dive" and set(hero.get("tags") or []).intersection({"anti-dive", "cc", "sleeper", "anti-flank"}):
             score += 4
         if comp["primary"] == "sniper" and set(hero.get("tags") or []).intersection({"dive", "flank"}):
             score += 4
-            reasons.append("スナイパー裏を取るダイブ／フランカー")
+            reasons.append("スナイパーの後ろに回れる")
         uniq = []
         seen = set()
         for r in reasons:
@@ -312,13 +311,13 @@ def movement_lines(hero: dict, rec: dict, side: str) -> list[str]:
     tags = set(hero.get("tags") or [])
     primary = rec["comp"]["primary"]
     if primary == "flying" and "hitscan" in tags:
-        lines.append("空の軌道は本線の真上ではなく、やや後ろの高所から切る。落ちたらすぐ次の箱へ。")
+        lines.append("空は真正面の真上ではなく、少し後ろの高い場所から撃つ。落ちたらすぐ次の箱へ。")
     if primary == "dive" and tags.intersection({"anti-dive", "sleeper", "cc"}):
-        lines.append("自分から前に出ない。着地地点（サポの横）でCCを待つ。")
+        lines.append("自分から前に出ない。飛び込まれた場所（回復役の横）で、スタンや眠りを待つ。")
     if primary == "brawl" and "antiheal" in tags:
-        lines.append("最初のアンチをタンク足下に入れて、近接の回復勝負を切る。")
+        lines.append("殴り合いが始まったら、まずタンクの足元に回復止めを入れる。")
     if primary == "sniper" and tags.intersection({"dive", "flank"}):
-        lines.append("本線を歩かない。壁の裏から高所のスナイパーへ。")
+        lines.append("開けた道は歩かない。壁の裏から、高い場所のスナイパーへ回る。")
     return [x for x in lines if x][:5]
 
 

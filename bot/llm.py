@@ -68,7 +68,7 @@ def polish_fight_plan(plan: dict, state: dict) -> str | None:
         return None
     hero = plan["hero"]
     facts = {
-        "you": hero.get("nameJa") or hero.get("name"),
+        "hero": hero.get("nameJa") or hero.get("name"),
         "role": hero.get("role"),
         "map": plan.get("title"),
         "side": state.get("side") or "flex",
@@ -76,7 +76,6 @@ def polish_fight_plan(plan: dict, state: dict) -> str | None:
         "stations": plan.get("stations"),
         "combo": plan.get("combo"),
         "threats": plan.get("threats"),
-        "kit": plan.get("play"),
         "lose": plan.get("lose"),
         "enemies": state.get("enemies") or [],
         "allies": state.get("allies") or [],
@@ -86,12 +85,14 @@ def polish_fight_plan(plan: dict, state: dict) -> str | None:
             {
                 "role": "system",
                 "content": (
-                    "あなたはOverwatch 2のコーチ。与えた事実だけを使う。"
-                    "無い地点名・クールタイム・ヒーローを作らない。"
-                    "日本語。Discord向けMarkdown。"
-                    "見出しは **今いる場所** / **最初のファイト** / **地点** / **敵への返し** / **これをやると負ける**。"
-                    "各見出しの下は2〜4文。具体的に『どこから・何を残して・誰を先に切るか』。"
-                    "全体800文字以内。"
+                    "Overwatch 2の助言を、友達に話すような普通の日本語で書く。"
+                    "与えた事実だけを使う。無い地名・スキル・ヒーローを作らない。"
+                    "『あなた』『自分』は書かない。誰が今そのヒーローか、とは書かない。"
+                    "見出しはこれだけ: **どこに立つか** / **最初にやること** / **敵の対処** / **やってはいけないこと**。"
+                    "各見出しは2〜3文。中学生でもわかる言葉。"
+                    "スキル名を出すときは、カッコで何をするか書く。例: 鈴（数秒無敵になる）。"
+                    "使わない言葉: 本線、クリーンセ、パイル、オフアングル、ポーク、CC、TP、ブロウル、バンカー、タイダル。"
+                    "全体600文字以内。Discord向けMarkdown。"
                 ),
             },
             {
