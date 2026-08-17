@@ -14,7 +14,17 @@ import aiohttp
 from bot import engine
 
 ROOT = Path(__file__).resolve().parents[1]
-CODE_GLOBS = ("bot/bot.py", "bot/engine.py", "bot/updater.py", "requirements.txt")
+CODE_GLOBS = (
+    "bot/bot.py",
+    "bot/engine.py",
+    "bot/updater.py",
+    "bot/vision.py",
+    "bot/vision_api.py",
+    "bot/tactics.py",
+    "bot/tactics_data.py",
+    "bot/llm.py",
+    "requirements.txt",
+)
 
 
 def _repo() -> str:

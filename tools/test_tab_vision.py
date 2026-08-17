@@ -26,9 +26,24 @@ def _jpeg_bytes(img: Image.Image, quality: int = 92) -> bytes:
     return buf.getvalue()
 
 
-def _run(allies: list[str], enemies: list[str], self_key: str, label: str) -> dict:
-    img = render_tab_fixture(allies, enemies, map_title="ROUTE 66", self_key=self_key)
-    result = read_scoreboard(_jpeg_bytes(img))
+def _run(
+    allies: list[str],
+    enemies: list[str],
+    self_key: str,
+    label: str,
+    *,
+    realistic: bool = False,
+    discord: bool = False,
+) -> dict:
+    img = render_tab_fixture(
+        allies, enemies, map_title="ROUTE 66", self_key=self_key, realistic=realistic
+    )
+    if discord:
+        img = img.convert("RGB").resize((1280, 720), Image.Resampling.BILINEAR)
+        data = _jpeg_bytes(img, quality=48)
+    else:
+        data = _jpeg_bytes(img)
+    result = read_scoreboard(data)
     print(f"--- {label} ---")
     print("layout", result["layout"])
     print("allies ", result["allies"])
@@ -101,6 +116,19 @@ def main() -> int:
     tank_enemies = ["sigma", "genji", "sojourn", "mercy", "juno"]
     tank = _run(tank_allies, tank_enemies, "kiriko", "tank-slot mauga")
     fails.extend(_expect(tank, tank_allies, tank_enemies, "kiriko"))
+
+    # Real TAB is a semi-transparent overlay on the map, then Discord JPEG-crushes it.
+    real = _run(allies, enemies, "mizuki", "realistic transparent TAB", realistic=True)
+    fails.extend(_expect(real, allies, enemies, "mizuki"))
+    crushed = _run(
+        allies, enemies, "mizuki", "discord jpeg overlay", realistic=True, discord=True
+    )
+    if crushed["allies"] != allies:
+        fails.append(f"discord allies {crushed['allies']} != {allies}")
+    if crushed["enemies"] != enemies:
+        fails.append(f"discord enemies {crushed['enemies']} != {enemies}")
+    if "emre" not in crushed["allies"] or "mizuki" not in crushed["allies"]:
+        fails.append("discord jpeg lost emre/mizuki")
 
     fails.extend(_confusion_unit_tests())
 

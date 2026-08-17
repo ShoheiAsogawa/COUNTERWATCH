@@ -151,6 +151,30 @@ def build_reply(state: dict) -> tuple[discord.Embed, list[discord.Embed], list[d
             main.set_thumbnail(url=url)
 
     you = f"あなたは **{self_h['nameJa']}**（{role_ja}）" if self_h else f"{role_ja} / {side_ja}"
+    read_lines = []
+    if ally_keys:
+        read_lines.append(
+            "味方 " + " · ".join(HEROES[k]["nameJa"] for k in ally_keys if k in HEROES)
+        )
+    if enemies:
+        read_lines.append("敵 " + enemy_txt)
+    else:
+        read_lines.append("敵 （編成が読めませんでした）")
+    if self_h:
+        read_lines.append("自分 " + self_h["nameJa"])
+    if read_lines:
+        main.add_field(name="スクショ読み", value="\n".join(read_lines)[:1024], inline=False)
+
+    if not enemies:
+        main.add_field(
+            name="ヒント",
+            value="敵ヒーローが読めなかった。TAB画面全体（上=味方・下=敵）を送って。"
+            "読めないときはキャプションに `dps route66 wrecking-ball genji ashe mercy juno` のように書いて再投稿して。",
+            inline=False,
+        )
+        main.set_footer(text="ロール変更は /role　例: /role tank")
+        return main, extras, files
+
     bits = [f"**{rec['comp_label']}**　{you}"]
     if queue_note:
         bits.append(queue_note)

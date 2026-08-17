@@ -166,6 +166,8 @@
     const n = topCells || 1;
     let red = 0;
     let green = 0;
+    let cyan = 0;
+    let orange = 0;
     const all = sig.length / 3;
     for (let i = 0; i < all; i++) {
       const r = sig[i * 3];
@@ -173,21 +175,27 @@
       const b = sig[i * 3 + 2];
       if (r > g + 20 && r > b + 12) red++;
       if (g > r + 6 && g > 45) green++;
+      if (b > r + 10 && g > r + 4) cyan++;
+      if (r > g + 8 && r > b + 18 && g > b) orange++;
     }
     return {
       topRg: tr / n - tg / n,
       redfrac: red / all,
       greenfrac: green / all,
+      cyanfrac: cyan / all,
+      orangefrac: orange / all,
       topLum: (tr + tg + tb) / (3 * n),
     };
   }
 
   function forceConfusions(key, hint, preferRole) {
     const h = hint || {};
+    const teal = (h.cyanfrac || 0) >= 0.14 || ((h.greenfrac || 0) >= 0.16 && (h.topRg || 0) < 20);
     if (key === "kiriko" || key === "mizuki") {
-      if ((h.greenfrac || 0) >= 0.16 && (h.topRg || 0) < 20) return "mizuki";
+      if (teal && (h.redfrac || 0) < 0.4) return "mizuki";
       if ((h.redfrac || 0) >= 0.42 && (h.topRg || 0) > 22) return "kiriko";
     }
+    if (preferRole === "damage" && key === "mauga" && (h.orangefrac || 0) >= 0.08) return "emre";
     if (preferRole === "damage" && key === "mauga") return "emre";
     if (preferRole === "tank" && key === "emre") return "mauga";
     return key;
