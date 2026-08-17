@@ -34,9 +34,10 @@ def _run(
     *,
     realistic: bool = False,
     discord: bool = False,
+    hud: bool = False,
 ) -> dict:
     img = render_tab_fixture(
-        allies, enemies, map_title="ROUTE 66", self_key=self_key, realistic=realistic
+        allies, enemies, map_title="ROUTE 66", self_key=self_key, realistic=realistic, hud=hud
     )
     if discord:
         img = img.convert("RGB").resize((1280, 720), Image.Resampling.BILINEAR)
@@ -82,8 +83,12 @@ def _confusion_unit_tests() -> list[str]:
         fails.append("mauga portrait in tank slot was not read as mauga")
     if match("mizuki", "support") != "mizuki":
         fails.append("mizuki portrait in support slot was not read as mizuki")
-    if match("kiriko", "support") != "kiriko":
-        fails.append("kiriko portrait in support slot was not read as kiriko")
+    if match("wuyang", "support") != "wuyang":
+        fails.append("wuyang portrait in support slot was not read as wuyang")
+    wuyang = Image.open(portraits / "wuyang.png").convert("RGB")
+    _, _, wuyang_csig = _feat_from_image(wuyang)
+    if _force_confusions("mizuki", wuyang_csig, "support") != "wuyang":
+        fails.append(f"wuyang color did not override mizuki: {wuyang_csig}")
 
     mizuki = Image.open(portraits / "mizuki.png").convert("RGB")
     _, _, mizuki_csig = _feat_from_image(mizuki)
@@ -129,6 +134,11 @@ def main() -> int:
         fails.append(f"discord enemies {crushed['enemies']} != {enemies}")
     if "emre" not in crushed["allies"] or "mizuki" not in crushed["allies"]:
         fails.append("discord jpeg lost emre/mizuki")
+
+    hud = _run(allies, enemies, "mizuki", "full-screen HUD TAB", realistic=True, hud=True)
+    fails.extend(_expect(hud, allies, enemies, "mizuki"))
+    if hud["self_key"] == "wuyang":
+        fails.append("HUD portrait stole self as wuyang")
 
     fails.extend(_confusion_unit_tests())
 

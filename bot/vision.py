@@ -38,13 +38,15 @@ def _color_sig(arr: np.ndarray) -> np.ndarray:
     circ = (xx - 23.5) ** 2 + (yy - 23.5) ** 2 <= 20 ** 2
     pix = a[circ]
     if pix.size == 0:
-        return np.zeros(9, dtype=np.float32)
+        return np.zeros(11, dtype=np.float32)
     top = a[circ & (yy < 20)]
     r, g, b = pix[:, 0], pix[:, 1], pix[:, 2]
     redfrac = float(((r > g + 20) & (r > b + 12)).mean())
     greenfrac = float(((g > r + 6) & (g > 45)).mean())
     cyanfrac = float(((b > r + 10) & (g > r + 4)).mean())
     orangefrac = float(((r > g + 8) & (r > b + 18) & (g > b)).mean())
+    skinfrac = float(((r > 75) & (g > 45) & (r > b - 8) & (np.abs(r - g) < 65)).mean())
+    purplefrac = float(((b > g + 8) & (r > 50) & (b > r - 10)).mean())
     if top.size:
         tr, tg, tb = top.mean(axis=0)
         top_lum = float((tr + tg + tb) / 3)
@@ -52,7 +54,7 @@ def _color_sig(arr: np.ndarray) -> np.ndarray:
     else:
         tr = tg = tb = top_lum = top_rg = 0.0
     return np.array(
-        [tr, tg, tb, redfrac, greenfrac, top_lum, top_rg, cyanfrac, orangefrac],
+        [tr, tg, tb, redfrac, greenfrac, top_lum, top_rg, cyanfrac, orangefrac, skinfrac, purplefrac],
         dtype=np.float32,
     )
 
@@ -211,12 +213,18 @@ def _force_confusions(
     redfrac, greenfrac, top_lum, top_rg = float(csig[3]), float(csig[4]), float(csig[5]), float(csig[6])
     cyanfrac = float(csig[7]) if csig.size > 7 else 0.0
     orangefrac = float(csig[8]) if csig.size > 8 else 0.0
+    skinfrac = float(csig[9]) if csig.size > 9 else 0.0
+    purplefrac = float(csig[10]) if csig.size > 10 else 0.0
     teal = cyanfrac >= 0.14 or (greenfrac >= 0.16 and top_rg < 20)
-    if key in ("kiriko", "mizuki"):
-        if teal and redfrac < 0.40:
-            return "mizuki"
-        if redfrac >= 0.42 and top_rg > 22:
+    if key in ("kiriko", "mizuki", "wuyang"):
+        if skinfrac >= 0.55 and greenfrac < 0.12 and cyanfrac < 0.12:
+            return "wuyang"
+        if redfrac >= 0.42 and top_rg > 22 and skinfrac < 0.55:
             return "kiriko"
+        if teal and redfrac < 0.50:
+            return "mizuki"
+        if greenfrac >= 0.14:
+            return "mizuki"
 
     def close_enough(other: str) -> bool:
         other_s = _score_of(scores, keys, other)
@@ -229,7 +237,19 @@ def _force_confusions(
     # In-game Emre icons are warm orange; only rewrite Mauga when Emre is close
     # or the crop itself is orange (preserve a real tank-slot Mauga).
     if prefer_role == "tank" and key == "emre":
+        tank = max(
+            (("sigma", _score_of(scores, keys, "sigma")),
+             ("mauga", _score_of(scores, keys, "mauga")),
+             ("hazard", _score_of(scores, keys, "hazard")),
+             ("orisa", _score_of(scores, keys, "orisa"))),
+            key=lambda z: z[1],
+        )
+        if tank[1] > 0:
+            return tank[0]
         return "mauga"
+    if prefer_role == "tank" and key in ("sigma", "hazard") and purplefrac < 0.10 and cyanfrac >= 0.10:
+        if close_enough("sigma"):
+            return "sigma"
     if prefer_role == "damage" and key == "mauga" and (orangefrac >= 0.12 or close_enough("emre")):
         return "emre"
     if key in ("mauga", "emre") and prefer_role is None:
@@ -257,10 +277,24 @@ def _merge_mask_bands(mask: np.ndarray, lum: np.ndarray, team: str, min_h: int) 
 
 def _complete_tab_rows(rows: list[dict], h: int) -> list[dict]:
     """If the red table is faint, rebuild it from the blue table's row spacing."""
-    ordered = sorted(rows, key=lambda z: z["y0"])
-    split = int(h * 0.52)
-    top = [r for r in ordered if r["y1"] < split]
-    bottom = [r for r in ordered if r["y0"] >= split]
+    ordered = [r for r in sorted(rows, key=lambda z: z["y0"]) if r["y1"] < int(h * 0.86)]
+    if len(ordered) < 4:
+        return ordered
+    if len(ordered) >= 6:
+        gaps = [(ordered[i + 1]["y0"] - ordered[i]["y1"], i) for i in range(len(ordered) - 1)]
+        gap, idx = max(gaps)
+        heights = [r["y1"] - r["y0"] for r in ordered]
+        med_h = sorted(heights)[len(heights) // 2]
+        if gap > max(12, 0.55 * med_h):
+            top, bottom = ordered[: idx + 1], ordered[idx + 1 :]
+        else:
+            top, bottom = [r for r in ordered if r["y1"] < int(h * 0.52)], [
+                r for r in ordered if r["y0"] >= int(h * 0.52)
+            ]
+    else:
+        top, bottom = [r for r in ordered if r["y1"] < int(h * 0.52)], [
+            r for r in ordered if r["y0"] >= int(h * 0.52)
+        ]
     top = sorted(top, key=lambda z: z["y0"])[:5]
     if len(top) < 4:
         return ordered
@@ -284,7 +318,7 @@ def _complete_tab_rows(rows: list[dict], h: int) -> list[dict]:
     extra: list[dict] = []
     for i in range(5):
         cy = start_cy + i * spacing
-        if cy > h * 0.90:
+        if cy > h * 0.86:
             break
         extra.append(
             {
@@ -403,6 +437,43 @@ def _scoreboard_rows(arr: np.ndarray, x0: int, x1: int) -> list[dict]:
         rows = var_rows
         rows = _assign_row_teams(rows)
     return _complete_tab_rows(rows, h)
+
+
+def _trim_hud(arr: np.ndarray) -> np.ndarray:
+    """Drop the in-game ability bar / self portrait under a full-screen TAB shot."""
+    h, w, _ = arr.shape
+    if h < 200:
+        return arr
+    bot = arr[int(h * 0.88) :]
+    left = arr[int(h * 0.86) :, : int(w * 0.28)]
+    if bot.size == 0 or left.size == 0:
+        return arr
+    chroma = float(bot.astype(np.float32).std())
+    mean = float(bot.astype(np.float32).mean())
+    if chroma > 34 and mean > 26 and float(left.astype(np.float32).std()) > 30:
+        return arr[: int(h * 0.84)]
+    return arr
+
+
+def _select_tab_hits(hits: list[dict]) -> list[dict]:
+    """Keep the regularly spaced 5+5 TAB column; drop HUD / career-stat portraits."""
+    if len(hits) < 4:
+        return hits
+    ordered = sorted(hits, key=lambda z: z["cy"])
+    ys = [h["cy"] for h in ordered]
+    gaps = [ys[i + 1] - ys[i] for i in range(len(ys) - 1)]
+    if gaps:
+        body = gaps[:-1] or gaps
+        med = sorted(body)[len(body) // 2]
+        while len(ordered) >= 6 and gaps and gaps[-1] > max(36, 1.8 * (med + 1)):
+            ordered = ordered[:-1]
+            ys = [h["cy"] for h in ordered]
+            gaps = [ys[i + 1] - ys[i] for i in range(len(ys) - 1)]
+            body = gaps[:-1] or gaps
+            med = sorted(body)[len(body) // 2] if body else med
+    if len(ordered) <= 10:
+        return ordered
+    return ordered[:10]
 
 
 def _keep_portrait_column(hits: list[dict], w: int) -> list[dict]:
@@ -537,11 +608,11 @@ def _match_peaks(arr: np.ndarray) -> list[dict]:
 
 def _match_portraits(arr: np.ndarray) -> list[dict]:
     h, w, _ = arr.shape
+    # Full-screen TAB: portraits are on the LEFT of the overlay.
+    # Do not scan the right half first — career stats portraits live there.
     regions = [
-        (int(w * 0.10), int(w * 0.50), int(w * 0.10), int(w * 0.26)),  # TAB: portraits on left of nameplates
-        (int(w * 0.08), int(w * 0.84), int(w * 0.06), int(w * 0.30)),  # full overlay
-        (int(w * 0.08), int(w * 0.48), int(w * 0.08), int(w * 0.42)),  # two-column left
-        (int(w * 0.50), int(w * 0.92), int(w * 0.50), int(w * 0.78)),  # two-column right
+        (int(w * 0.10), int(w * 0.50), int(w * 0.10), int(w * 0.26)),
+        (int(w * 0.08), int(w * 0.72), int(w * 0.08), int(w * 0.28)),
     ]
     unique_rows: list[dict] = []
     row_x: list[tuple[int, int]] = []
@@ -562,11 +633,10 @@ def _match_portraits(arr: np.ndarray) -> list[dict]:
             picked.append(hit)
     if len(picked) < 6:
         picked = _merge_hits(picked, _match_peaks(arr))
-    picked = [hit for hit in picked if 0.12 * h <= hit["cy"] <= 0.90 * h]
+    picked = [hit for hit in picked if 0.10 * h <= hit["cy"] <= 0.86 * h]
     picked = _keep_portrait_column(picked, w)
+    picked = _select_tab_hits(picked)
     picked.sort(key=lambda z: (z["cy"], z["cx"]))
-    if len(picked) > 12:
-        picked = picked[:12]
     return picked
 
 
@@ -660,7 +730,7 @@ def read_scoreboard(data: bytes) -> dict:
     else:
         img = img.convert("RGB")
     work = _resize_max(img)
-    arr = np.asarray(work)
+    arr = _trim_hud(np.asarray(work))
     hits = _match_portraits(arr)
     allies, enemies, layout = _assign_teams(hits)
     # Keep at most 5 per side, in board order. Same hero can appear on both teams.
@@ -700,6 +770,7 @@ def render_tab_fixture(
     self_key: str | None = None,
     size: tuple[int, int] = (1920, 1080),
     realistic: bool = False,
+    hud: bool = False,
 ) -> Image.Image:
     """Synthetic TAB scoreboard used by tests (top blue / bottom red / circular icons)."""
     w, h = size
@@ -761,4 +832,24 @@ def render_tab_fixture(
 
     paste_portraits(allies, 0.16, 0.48)
     paste_portraits(enemies, 0.54, 0.86)
+    if hud:
+        bar = ImageDraw.Draw(img)
+        bar.rectangle((0, int(h * 0.86), w, h), fill=(18, 22, 28))
+        me = self_key or (allies[-1] if allies else "ana")
+        port = Image.open(PORTRAIT_DIR / f"{me}.png").convert("RGBA")
+        d = int(h * 0.11)
+        port = port.resize((d, d), Image.Resampling.LANCZOS)
+        circ = Image.new("L", (d, d), 0)
+        ImageDraw.Draw(circ).ellipse((1, 1, d - 2, d - 2), fill=255)
+        port.putalpha(circ)
+        img.paste(port, (int(w * 0.04), int(h * 0.875)), port)
+        for i, key in enumerate((allies[2:5] or allies)[:3]):
+            mini = Image.open(PORTRAIT_DIR / f"{key}.png").convert("RGB")
+            s = int(h * 0.05)
+            mini = mini.resize((s, s), Image.Resampling.LANCZOS)
+            img.paste(mini, (int(w * 0.80), int(h * 0.70) + i * int(s * 1.2)))
+        for i in range(4):
+            x0 = int(w * 0.42) + i * int(h * 0.06)
+            y0 = int(h * 0.90)
+            bar.rectangle((x0, y0, x0 + int(h * 0.045), y0 + int(h * 0.045)), fill=(80, 180, 90) if i == 0 else (70, 90, 160))
     return img
