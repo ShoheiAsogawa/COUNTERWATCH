@@ -1,0 +1,1 @@
+"""COUNTERWATCH Discord bot package."""

@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>COUNTERWATCH — Discord bot settings</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;600;700&family=IBM+Plex+Mono:wght@400;600&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --bg: #0c0e14;
+      --panel: #161920;
+      --line: #2a3140;
+      --blurple: #5865f2;
+      --gold: #f0990f;
+      --ok: #3ba55d;
+      --text: #e8eaed;
+      --dim: #8b93a7;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font-family: "IBM Plex Sans", sans-serif;
+      line-height: 1.55;
+    }
+    header {
+      padding: 28px 24px 12px;
+      border-bottom: 1px solid var(--line);
+      background: linear-gradient(180deg, #1a1d28, var(--bg));
+    }
+    header h1 { margin: 0; font-size: 22px; letter-spacing: 0.12em; }
+    header p { margin: 8px 0 0; color: var(--dim); max-width: 720px; }
+    main { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; padding: 20px; }
+    @media (max-width: 980px) { main { grid-template-columns: 1fr; } }
+    section {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 16px 18px 20px;
+    }
+    h2 { margin: 0 0 12px; font-size: 13px; letter-spacing: 0.14em; color: var(--gold); text-transform: uppercase; }
+    ol, ul { margin: 0; padding-left: 18px; color: #d5d8e0; }
+    li { margin: 6px 0; }
+    code, .mono { font-family: "IBM Plex Mono", monospace; font-size: 12px; color: #c9d1e0; }
+    .row { display: flex; gap: 8px; flex-wrap: wrap; margin: 12px 0; }
+    button {
+      background: var(--blurple);
+      color: #fff;
+      border: 0;
+      border-radius: 8px;
+      padding: 10px 14px;
+      font-weight: 700;
+      cursor: pointer;
+    }
+    button.ghost { background: #2b2f3a; }
+    button.ok { background: var(--ok); }
+    pre {
+      background: #0a0c12;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 12px;
+      overflow: auto;
+      max-height: 420px;
+      font-size: 11px;
+      white-space: pre-wrap;
+    }
+    a { color: #8ab4ff; }
+    .pill { display: inline-block; background: #222737; color: var(--dim); border-radius: 99px; padding: 2px 8px; font-size: 11px; }
+    label { display: block; font-size: 12px; color: var(--dim); margin-top: 10px; }
+    input, textarea {
+      width: 100%;
+      margin-top: 4px;
+      background: #0a0c12;
+      border: 1px solid var(--line);
+      color: var(--text);
+      border-radius: 8px;
+      padding: 8px 10px;
+      font-family: "IBM Plex Mono", monospace;
+      font-size: 12px;
+    }
+    .note { font-size: 12px; color: var(--dim); margin-top: 8px; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>COUNTERWATCH · DISCORD BOT SETTINGS</h1>
+    <p>このページはボットの設定チェックリストです。下のプロンプトを AI に渡せば、Portal 手順・<code>.env</code>・起動・動作確認まで実行させられます。トークンはチャットに貼らないでください。</p>
+  </header>
+  <main>
+    <section>
+      <h2>1. Discord Developer Portal</h2>
+      <ol>
+        <li><a href="https://discord.com/developers/applications" target="_blank" rel="noreferrer">applications</a> → New Application → <code>COUNTERWATCH</code></li>
+        <li>Bot → Add Bot → <strong>Message Content Intent ON</strong> → Save</li>
+        <li>Reset Token → <code>DISCORD_BOT_TOKEN</code>（画面に出したら即 <code>.env</code> へ）</li>
+        <li>OAuth2 → Application ID → <code>DISCORD_CLIENT_ID</code></li>
+        <li>Permissions <code>2147593216</code> / scopes <code>bot applications.commands</code></li>
+      </ol>
+      <p class="note">招待URL（Client ID を入れて開く）:</p>
+      <p class="mono" id="invite">https://discord.com/oauth2/authorize?client_id=YOUR_CLIENT_ID&amp;permissions=2147593216&amp;scope=bot%20applications.commands</p>
+      <label>Client ID を入れると上の URL を組み立てます（この欄はブラウザ内だけ。送信しません）</label>
+      <input id="cid" placeholder="Application ID" autocomplete="off" />
+    </section>
+    <section>
+      <h2>2. .env に書くキー</h2>
+      <pre>DISCORD_BOT_TOKEN=
+DISCORD_CLIENT_ID=
+DISCORD_LISTEN_ALL=1
+DISCORD_CHANNEL_NAMES=counterwatch,アンチ,overwatch,ow
+GITHUB_REPO=
+GITHUB_BRANCH=main
+GITHUB_KNOWLEDGE_PATH=bot/knowledge.json
+GITHUB_SYNC_SECONDS=180
+GIT_AUTO_PULL=0</pre>
+      <p class="note"><code>LISTEN_ALL=1</code> は専用部屋向け。名前で絞るなら <code>0</code>。</p>
+      <p class="note">起動: リポジトリルートで <code>pip install -r requirements.txt</code> → <code>python3 -m bot.bot</code></p>
+    </section>
+    <section>
+      <h2>3. チャンネルでの確認</h2>
+      <ul>
+        <li><code>/role dps</code> <code>/side attack</code></li>
+        <li>テキスト: <code>gibraltar pharah mercy reinhardt lucio brigitte</code></li>
+        <li>スコアボード画像 + キャプション（マップと敵名）</li>
+        <li>返信にヒーローの顔画像が付くこと</li>
+        <li>管理者: <code>/reload</code>（GitHub 同期）</li>
+      </ul>
+    </section>
+    <section>
+      <h2>4. AI に渡すプロンプト</h2>
+      <p class="note">全文は <code>prompts/discord-bot-setup.prompt.md</code> にあります。</p>
+      <div class="row">
+        <button type="button" id="copy">プロンプトをコピー</button>
+        <a class="pill" href="prompts/discord-bot-setup.prompt.md">ファイルを開く</a>
+      </div>
+      <pre id="prompt"></pre>
+    </section>
+  </main>
+  <script>
+    const cid = document.getElementById("cid");
+    const invite = document.getElementById("invite");
+    cid.addEventListener("input", () => {
+      const id = cid.value.trim() || "YOUR_CLIENT_ID";
+      invite.textContent = `https://discord.com/oauth2/authorize?client_id=${id}&permissions=2147593216&scope=bot%20applications.commands`;
+    });
+    const promptText = `あなたは COUNTERWATCH（Overwatch 2 アンチピック Discord ボット）のセットアップ担当です。リポジトリのルートで作業してください。ゴールは「Discord サーバーの専用チャンネルにボットが入り、スコアボード画像またはテキストに対してヒーロー画像つきのアンチピックを返す」状態です。
+
+絶対に守ること:
+- DISCORD_BOT_TOKEN をチャット・コミット・ログに出さない。
+- .env は git に入れない。
+- Python はルートから python3 -m bot.bot で起動する。
+
+フェーズ A Discord Developer Portal:
+1. https://discord.com/developers/applications → New Application → COUNTERWATCH
+2. Bot → Message Content Intent ON → Save
+3. Reset Token → DISCORD_BOT_TOKEN（人間が .env に書く。AIのチャットに貼らない）
+4. OAuth2 Application ID → DISCORD_CLIENT_ID
+5. 招待 permissions=2147593216 scope=bot applications.commands
+6. サーバーにチャンネル counterwatch を作りボットを入れる
+
+フェーズ B:
+cp .env.example .env
+pip install -r requirements.txt
+任意で tesseract-ocr
+
+.env キー: DISCORD_BOT_TOKEN, DISCORD_CLIENT_ID, DISCORD_LISTEN_ALL=1, DISCORD_CHANNEL_NAMES=counterwatch,アンチ,overwatch,ow, GITHUB_REPO, GITHUB_BRANCH=main, GITHUB_KNOWLEDGE_PATH=bot/knowledge.json, GITHUB_SYNC_SECONDS=180, GIT_AUTO_PULL=0
+
+フェーズ C スモーク:
+python3 -c "from bot.engine import recommend, parse_text; s=parse_text('dps gibraltar pharah mercy reinhardt lucio brigitte'); r=recommend(s['map'], s['enemies'], 'damage', 'attack'); print(s['map'], [x['key'] for x in s['enemies']], [x['key'] for x in r[:5]])"
+期待: gibraltar、敵 pharah/mercy、推薦 ashe/widowmaker/emre/sojourn/cassidy 付近。
+
+フェーズ D: python3 -m bot.bot
+失敗時: token / Message Content Intent / カレントがルートか。
+
+フェーズ E チャンネル確認:
+/role dps  /side attack
+gibraltar pharah mercy reinhardt lucio brigitte
+画像付きスコアボード
+返信にヒーローPNGが付くこと。/reload
+
+フェーズ F 任意: GITHUB_REPO=owner/name で knowledge.json を切断せず更新。
+
+報告: Intent ONか、.envのキー名のみ、招待URL（tokenは伏せる）、推薦5体、残作業。`;
+    document.getElementById("prompt").textContent = promptText;
+    document.getElementById("copy").addEventListener("click", async () => {
+      await navigator.clipboard.writeText(promptText);
+      document.getElementById("copy").textContent = "コピーした";
+      document.getElementById("copy").classList.add("ok");
+    });
+  </script>
+</body>
+</html>

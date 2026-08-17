@@ -1,0 +1,20 @@
+name: validate-knowledge
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  knowledge:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: knowledge.json が読めること
+        run: python3 -c "import json; d=json.load(open('bot/knowledge.json')); assert len(d['heroes'])>=40; print(len(d['heroes']), 'heroes')"
+      - name: エンジンの自己テスト
+        run: python3 -c "from bot.engine import recommend; r=recommend('damage',['pharah','mercy','reinhardt','lucio','brigitte'],'watchpoint-gibraltar'); print(r['picks'][0]['hero']['key'])"
