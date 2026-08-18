@@ -10,14 +10,18 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 from bot.vision import (  # noqa: E402
+    _color_sig,
+    _feat_from_arr,
     _feat_from_image,
     _force_confusions,
+    _inner_mean,
     _pick_key,
     _templates,
     read_scoreboard,
     render_tab_fixture,
 )
-from PIL import Image  # noqa: E402
+from PIL import Image, ImageDraw  # noqa: E402
+import numpy as np  # noqa: E402
 
 
 def _jpeg_bytes(img: Image.Image, quality: int = 92) -> bytes:
@@ -111,6 +115,42 @@ def _confusion_unit_tests() -> list[str]:
     _, _, kiriko_csig = _feat_from_image(kiriko)
     if _force_confusions("mizuki", kiriko_csig, "support") != "kiriko":
         fails.append(f"kiriko color did not override mizuki: {kiriko_csig}")
+
+    # TAB row tint + Discord JPEG used to flip Emre→Anran and Kiriko→Wuyang.
+
+    def degrade(name: str, tint: tuple[int, int, int]) -> np.ndarray:
+        src = Image.open(portraits / f"{name}.png").convert("RGB")
+        d = 160
+        src = src.resize((d, d), Image.Resampling.LANCZOS)
+        circ = Image.new("L", (d, d), 0)
+        ImageDraw.Draw(circ).ellipse((2, 2, d - 3, d - 3), fill=255)
+        bg = Image.new("RGB", (d, d), tint)
+        bg.paste(src, mask=circ)
+        bg = Image.blend(bg, Image.new("RGB", (d, d), tint), 0.22)
+        bg = bg.resize((28, 28), Image.Resampling.BILINEAR).resize((64, 64), Image.Resampling.BILINEAR)
+        buf = io.BytesIO()
+        bg.save(buf, format="JPEG", quality=35)
+        return np.asarray(Image.open(io.BytesIO(buf.getvalue())).convert("RGB"))
+
+    def match_arr(arr: np.ndarray, prefer: str) -> str:
+        feat = _feat_from_arr(arr)
+        col = _inner_mean(arr)
+        csig = _color_sig(arr)
+        scores = mat @ feat
+        idx, _score, _second = _pick_key(scores, col, csig, keys, colors, csigs, roles, prefer)
+        return _force_confusions(keys[idx], csig, prefer, scores, keys)
+
+    blue = (32, 58, 110)
+    if match_arr(degrade("emre", blue), "damage") != "emre":
+        fails.append("tinted jpeg emre was not read as emre")
+    if match_arr(degrade("mizuki", blue), "support") != "mizuki":
+        fails.append("tinted jpeg mizuki was not read as mizuki")
+    if match_arr(degrade("kiriko", blue), "support") != "kiriko":
+        fails.append("tinted jpeg kiriko was rewritten")
+    if match_arr(degrade("ashe", blue), "damage") != "ashe":
+        fails.append("tinted jpeg ashe was not read as ashe")
+    if match_arr(degrade("mauga", blue), "tank") != "mauga":
+        fails.append("tinted jpeg mauga was rewritten to emre")
     return fails
 
 

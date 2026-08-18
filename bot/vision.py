@@ -47,6 +47,8 @@ def _color_sig(arr: np.ndarray) -> np.ndarray:
     orangefrac = float(((r > g + 8) & (r > b + 18) & (g > b)).mean())
     skinfrac = float(((r > 75) & (g > 45) & (r > b - 8) & (np.abs(r - g) < 65)).mean())
     purplefrac = float(((b > g + 8) & (r > 50) & (b > r - 10)).mean())
+    # Mizuki visor is neon green through the eyes; Kiriko/Emre never are.
+    neonfrac = float(((g > r + 12) & (g > 70) & (g >= b - 15)).mean())
     if top.size:
         tr, tg, tb = top.mean(axis=0)
         top_lum = float((tr + tg + tb) / 3)
@@ -54,7 +56,20 @@ def _color_sig(arr: np.ndarray) -> np.ndarray:
     else:
         tr = tg = tb = top_lum = top_rg = 0.0
     return np.array(
-        [tr, tg, tb, redfrac, greenfrac, top_lum, top_rg, cyanfrac, orangefrac, skinfrac, purplefrac],
+        [
+            tr,
+            tg,
+            tb,
+            redfrac,
+            greenfrac,
+            top_lum,
+            top_rg,
+            cyanfrac,
+            orangefrac,
+            skinfrac,
+            purplefrac,
+            neonfrac,
+        ],
         dtype=np.float32,
     )
 
@@ -88,6 +103,11 @@ def _feat_from_image(img: Image.Image) -> tuple[np.ndarray, np.ndarray, np.ndarr
     return _feat_from_arr(arr), _inner_mean(arr), _color_sig(arr)
 
 
+def _tab_variants(img: Image.Image) -> list[Image.Image]:
+    rgb = img.convert("RGB")
+    return [rgb, rgb.filter(ImageFilter.GaussianBlur(radius=1.15))]
+
+
 @lru_cache(maxsize=1)
 def _templates() -> tuple[list[str], np.ndarray, np.ndarray, np.ndarray, list[str]]:
     from bot.engine import HEROES
@@ -100,8 +120,7 @@ def _templates() -> tuple[list[str], np.ndarray, np.ndarray, np.ndarray, list[st
     for path in sorted(PORTRAIT_DIR.glob("*.png")):
         img = Image.open(path).convert("RGB")
         role = (HEROES.get(path.stem) or {}).get("role") or "damage"
-        variants = [img, img.filter(ImageFilter.GaussianBlur(radius=1.15))]
-        for variant in variants:
+        for variant in _tab_variants(img):
             feat, col, csig = _feat_from_image(variant)
             keys.append(path.stem)
             vecs.append(feat)
@@ -168,8 +187,9 @@ def _pick_key(
             best = float(scores[best_i])
 
     def penalty(i: int) -> float:
-        # Prefer the template whose top-band color matches the crop.
-        d = float(np.linalg.norm(csig[:3] - csigs[i][:3]) / 80.0)
+        # Absolute RGB mean shifts under TAB tint/JPEG. Keep this a tie-break
+        # or Emre (0.97 cosine) loses to Anran.
+        d = min(0.05, float(np.linalg.norm(csig[:3] - csigs[i][:3]) / 400.0))
         cpen = float(np.linalg.norm(color - colors[i]) / 180.0) * 0.04
         role_pen = 0.0
         if prefer_role and roles[i] != prefer_role:
@@ -180,7 +200,8 @@ def _pick_key(
         grn_pen = abs(float(csig[4] - csigs[i][4])) * 0.10
         cyan_pen = abs(float(csig[7] - csigs[i][7])) * 0.10 if csig.size > 7 else 0.0
         org_pen = abs(float(csig[8] - csigs[i][8])) * 0.08 if csig.size > 8 else 0.0
-        return d + cpen + role_pen + red_pen + grn_pen + cyan_pen + org_pen
+        neon_pen = abs(float(csig[11] - csigs[i][11])) * 0.12 if csig.size > 11 else 0.0
+        return d + cpen + role_pen + red_pen + grn_pen + cyan_pen + org_pen + neon_pen
 
     chosen = best_i
     chosen_s = best - penalty(best_i)
@@ -192,6 +213,10 @@ def _pick_key(
         adj = s - penalty(i)
         if adj > chosen_s:
             chosen, chosen_s = i, adj
+    # Color is a tie-break. A clear cosine winner (Emre 0.97 vs Anran 0.93) must stick.
+    if float(scores[chosen]) < best - 0.008:
+        if (not prefer_role) or roles[best_i] == prefer_role or best >= 0.94:
+            chosen = best_i
     second = float(scores[int(top[1])]) if len(top) > 1 else 0.0
     return chosen, float(scores[chosen]), second
 
@@ -218,22 +243,38 @@ def _force_confusions(
     orangefrac = float(csig[8]) if csig.size > 8 else 0.0
     skinfrac = float(csig[9]) if csig.size > 9 else 0.0
     purplefrac = float(csig[10]) if csig.size > 10 else 0.0
+    neonfrac = float(csig[11]) if csig.size > 11 else 0.0
     teal = cyanfrac >= 0.14 or (greenfrac >= 0.16 and top_rg < 20)
+    # Mizuki's neon visor survives TAB tint; do not wait until cosine already says Mizuki.
+    if neonfrac >= 0.10 or (greenfrac >= 0.22 and cyanfrac >= 0.22 and redfrac < 0.48 and purplefrac < 0.20):
+        if prefer_role in (None, "support") or key in ("kiriko", "mizuki", "wuyang", "mercy", "ana", "genji"):
+            return "mizuki"
     # Juno visor is purple/cyan; Wuyang is an orange face. They cosine-match ~0.93.
     if key in ("juno", "wuyang"):
         if purplefrac >= 0.16 or (cyanfrac >= 0.12 and orangefrac < 0.55):
+            return "juno"
+        juno_s = _score_of(scores, keys, "juno")
+        wuy_s = _score_of(scores, keys, "wuyang")
+        if prefer_role == "support" and juno_s >= 0.88 and juno_s >= wuy_s - 0.03:
             return "juno"
         ashe_s = _score_of(scores, keys, "ashe")
         wuy_s = _score_of(scores, keys, "wuyang")
         # Ashe's hat reads orange; do not promote Wuyang over a clearly better Ashe crop.
         if ashe_s >= 0.90 and ashe_s > wuy_s + 0.03:
             return "ashe"
-        if prefer_role == "support" and orangefrac >= 0.70 and purplefrac < 0.10:
+        if prefer_role == "support" and orangefrac >= 0.70 and purplefrac < 0.10 and neonfrac < 0.08:
             return "wuyang"
     if key in ("kiriko", "mizuki", "wuyang"):
-        if prefer_role in (None, "support") and skinfrac >= 0.55 and greenfrac < 0.12 and cyanfrac < 0.12:
+        if (
+            prefer_role in (None, "support")
+            and skinfrac >= 0.68
+            and orangefrac >= 0.55
+            and greenfrac < 0.12
+            and cyanfrac < 0.10
+            and neonfrac < 0.08
+        ):
             return "wuyang"
-        if redfrac >= 0.42 and top_rg > 22 and skinfrac < 0.55:
+        if redfrac >= 0.42 and top_rg > 22 and neonfrac < 0.08:
             return "kiriko"
         if teal and redfrac < 0.50:
             return "mizuki"
@@ -247,10 +288,24 @@ def _force_confusions(
             return True
         return other_s >= self_s - 0.12
 
+    # TAB tint used to turn Emre into Anran/Hanzo even when Emre cosine led.
+    if prefer_role == "damage" and key in ("anran", "hanzo", "mauga", "freja", "hazard", "shion", "ashe"):
+        emre_s = _score_of(scores, keys, "emre")
+        ashe_s = _score_of(scores, keys, "ashe")
+        self_s = _score_of(scores, keys, key)
+        if emre_s >= 0.90 and emre_s >= self_s - 0.01 and emre_s >= ashe_s - 0.02:
+            return "emre"
+        if key == "anran" and ashe_s >= 0.90 and ashe_s >= emre_s - 0.015:
+            return "ashe"
+
     # Role-queue TAB is tank / dps / dps / support / support.
     # In-game Emre icons are warm orange; only rewrite Mauga when Emre is close
     # or the crop itself is orange (preserve a real tank-slot Mauga).
-    if prefer_role == "tank" and key in ("emre", "wuyang", "mercy", "juno"):
+    if prefer_role == "tank" and key in ("emre", "wuyang", "mercy", "juno", "hazard"):
+        mauga_s = _score_of(scores, keys, "mauga")
+        self_s = _score_of(scores, keys, key)
+        if mauga_s >= 0.93 and mauga_s >= self_s + 0.008:
+            return "mauga"
         tank = max(
             (
                 ("wrecking-ball", _score_of(scores, keys, "wrecking-ball")),
@@ -309,7 +364,7 @@ def _merge_mask_bands(mask: np.ndarray, lum: np.ndarray, team: str, min_h: int) 
 
 def _complete_tab_rows(rows: list[dict], h: int) -> list[dict]:
     """If the red table is faint, rebuild it from the blue table's row spacing."""
-    ordered = [r for r in sorted(rows, key=lambda z: z["y0"]) if r["y1"] < int(h * 0.86)]
+    ordered = [r for r in sorted(rows, key=lambda z: z["y0"]) if r["y1"] < int(h * 0.90)]
     if len(ordered) < 4:
         return ordered
     if len(ordered) >= 8:
@@ -360,7 +415,7 @@ def _complete_tab_rows(rows: list[dict], h: int) -> list[dict]:
     extra: list[dict] = []
     for i in range(5):
         cy = start_cy + i * spacing
-        if cy > h * 0.86:
+        if cy > h * 0.90:
             break
         extra.append(
             {
@@ -633,6 +688,9 @@ def _best_in_row(arr: np.ndarray, row: dict, x_lo: int, x_hi: int) -> dict | Non
             feat = _feat_from_arr(patch)
             col = _inner_mean(patch)
             csig = _color_sig(patch)
+            # Solid blue/red nameplate, not a portrait (Echo was winning Cassidy here).
+            if csig.size > 7 and float(csig[7]) >= 0.85:
+                continue
             scores = mat @ feat
             idx, score, second = _pick_key(scores, col, csig, keys, colors, csigs, roles, prefer)
             if score < 0.62:
@@ -662,7 +720,7 @@ def _best_in_row(arr: np.ndarray, row: dict, x_lo: int, x_hi: int) -> dict | Non
     def rank(hit: dict) -> tuple:
         # 0.16 used to let a small Wuyang crop beat a 0.99 Ashe on a mislabeled support row.
         role_bonus = 0.03 if prefer and hit.get("role") == prefer else 0.0
-        fill_bonus = 0.05 * min(1.0, hit["size"] / max(band_h, 1))
+        fill_bonus = 0.02 * min(1.0, hit["size"] / max(band_h, 1))
         return (hit["score"] + role_bonus + fill_bonus, hit["margin"], hit["size"])
 
     return max(cands, key=rank)
@@ -694,7 +752,7 @@ def _match_peaks(arr: np.ndarray) -> list[dict]:
     var_rows = _assign_row_teams(var_rows)
     _annotate_roles(var_rows)
     picked: list[dict] = []
-    px0, px1 = int(w * 0.10), int(w * 0.26)
+    px0, px1 = int(w * 0.10), int(w * 0.24)
     for row in var_rows:
         hit = _best_in_row(arr, row, px0, px1)
         if hit:
@@ -715,7 +773,7 @@ def _match_portraits(arr: np.ndarray) -> list[dict]:
         unique_rows.extend(_scoreboard_rows(arr, rx0, rx1))
     unique_rows = _dedupe_scoreboard_rows(unique_rows)
     _annotate_roles(unique_rows)
-    px0, px1 = int(w * 0.08), int(w * 0.28)
+    px0, px1 = int(w * 0.10), int(w * 0.24)
     picked: list[dict] = []
     labeled = sum(1 for row in unique_rows if row.get("prefer_role"))
     for row in unique_rows:

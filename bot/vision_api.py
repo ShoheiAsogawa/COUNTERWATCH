@@ -13,7 +13,8 @@ Return ONLY JSON:
 Rules:
 - Allies are the TOP (blue) table. Enemies are the BOTTOM (red) table. Always 5 and 5 in role queue.
 - Use hyphen keys: wrecking-ball, soldier-76, dva, kiriko, juno, emre, mizuki, hazard, route-66.
-- Juno (teal/purple visor, yellow accents) is not Wuyang (orange face). Emre is not Hazard.
+- Juno (teal/purple visor, yellow accents) is not Wuyang (orange face). Emre is not Hazard, Mauga, Hanzo, or Anran.
+- Mizuki (neon-green visor, conical hat) is not Kiriko (red fox mask).
 - Same hero may appear on both teams. Keep both. Do not drop names to unique-only.
 - Ignore player nicknames. Read circular portraits.
 - map from header (e.g. ROUTE 66, ルート66, エスコート).

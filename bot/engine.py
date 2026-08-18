@@ -269,6 +269,10 @@ HERO_ALIASES = {
     "dmon": ["d.mon", "d mon"],
     "widowmaker": ["widow"],
     "junker-queen": ["junker queen"],
+    "emre": ["エムレ", "m.a.", "m a", "emray"],
+    "mizuki": ["ミズキ", "mizuki"],
+    "ana": ["hana"],
+    "ashe": ["ash"],
 }
 
 
