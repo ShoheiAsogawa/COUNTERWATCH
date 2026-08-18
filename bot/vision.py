@@ -251,18 +251,20 @@ def _force_confusions(
             return "mizuki"
     # Juno visor is purple/cyan; Wuyang is an orange face. They cosine-match ~0.93.
     if key in ("juno", "wuyang"):
-        if purplefrac >= 0.16 or (cyanfrac >= 0.12 and orangefrac < 0.55):
-            return "juno"
         juno_s = _score_of(scores, keys, "juno")
         wuy_s = _score_of(scores, keys, "wuyang")
-        if prefer_role == "support" and juno_s >= 0.88 and juno_s >= wuy_s - 0.03:
+        wuyang_leads = wuy_s >= 0 and juno_s >= 0 and wuy_s >= juno_s + 0.015
+        if not wuyang_leads:
+            if purplefrac >= 0.18:
+                return "juno"
+            if cyanfrac >= 0.14 and orangefrac < 0.40 and purplefrac >= 0.10:
+                return "juno"
+        if prefer_role == "support" and juno_s >= 0.88 and juno_s >= wuy_s + 0.01:
             return "juno"
         ashe_s = _score_of(scores, keys, "ashe")
-        wuy_s = _score_of(scores, keys, "wuyang")
-        # Ashe's hat reads orange; do not promote Wuyang over a clearly better Ashe crop.
         if ashe_s >= 0.90 and ashe_s > wuy_s + 0.03:
             return "ashe"
-        if prefer_role == "support" and orangefrac >= 0.70 and purplefrac < 0.10 and neonfrac < 0.08:
+        if prefer_role == "support" and orangefrac >= 0.50 and neonfrac < 0.08 and purplefrac < 0.35:
             return "wuyang"
     if key in ("kiriko", "mizuki", "wuyang"):
         if (
@@ -288,6 +290,18 @@ def _force_confusions(
             return True
         return other_s >= self_s - 0.12
 
+    # D.Mon: magenta/purple hair. Do not steal Hazard (purplefrac ~0.07).
+    if prefer_role == "tank" and purplefrac >= 0.20 and cyanfrac < 0.12 and neonfrac < 0.08:
+        dmon_s = _score_of(scores, keys, "dmon")
+        if dmon_s < 0:
+            return "dmon"
+        other = max(
+            _score_of(scores, keys, n)
+            for n in ("hazard", "mauga", "dva", "domina", "junker-queen", "sigma")
+        )
+        if dmon_s >= 0.82 and dmon_s >= other - 0.02:
+            return "dmon"
+
     # TAB tint used to turn Emre into Anran/Hanzo even when Emre cosine led.
     if prefer_role == "damage" and key in ("anran", "hanzo", "mauga", "freja", "hazard", "shion", "ashe"):
         emre_s = _score_of(scores, keys, "emre")
@@ -295,12 +309,40 @@ def _force_confusions(
         self_s = _score_of(scores, keys, key)
         if emre_s >= 0.90 and emre_s >= self_s - 0.01 and emre_s >= ashe_s - 0.02:
             return "emre"
-        if key == "anran" and ashe_s >= 0.90 and ashe_s >= emre_s - 0.015:
-            return "ashe"
+        if key == "anran":
+            anran_s = _score_of(scores, keys, "anran")
+            if ashe_s >= anran_s + 0.02:
+                return "ashe"
 
     # Role-queue TAB is tank / dps / dps / support / support.
-    # In-game Emre icons are warm orange; only rewrite Mauga when Emre is close
-    # or the crop itself is orange (preserve a real tank-slot Mauga).
+    if prefer_role == "tank" and key in (
+        "emre",
+        "wuyang",
+        "mercy",
+        "juno",
+        "junker-queen",
+        "sombra",
+        "sojourn",
+        "jetpack-cat",
+        "illari",
+        "lifeweaver",
+    ):
+        tank = max(
+            (
+                ("dmon", _score_of(scores, keys, "dmon")),
+                ("domina", _score_of(scores, keys, "domina")),
+                ("hazard", _score_of(scores, keys, "hazard")),
+                ("wrecking-ball", _score_of(scores, keys, "wrecking-ball")),
+                ("sigma", _score_of(scores, keys, "sigma")),
+                ("mauga", _score_of(scores, keys, "mauga")),
+                ("orisa", _score_of(scores, keys, "orisa")),
+                ("dva", _score_of(scores, keys, "dva")),
+                ("winston", _score_of(scores, keys, "winston")),
+            ),
+            key=lambda z: z[1],
+        )
+        if tank[1] > 0:
+            return tank[0]
     if prefer_role == "tank" and key in ("emre", "wuyang", "mercy", "juno", "hazard"):
         mauga_s = _score_of(scores, keys, "mauga")
         self_s = _score_of(scores, keys, key)
@@ -312,6 +354,8 @@ def _force_confusions(
                 ("sigma", _score_of(scores, keys, "sigma")),
                 ("mauga", _score_of(scores, keys, "mauga")),
                 ("hazard", _score_of(scores, keys, "hazard")),
+                ("dmon", _score_of(scores, keys, "dmon")),
+                ("domina", _score_of(scores, keys, "domina")),
                 ("orisa", _score_of(scores, keys, "orisa")),
                 ("dva", _score_of(scores, keys, "dva")),
                 ("winston", _score_of(scores, keys, "winston")),
@@ -328,6 +372,11 @@ def _force_confusions(
             (
                 ("ashe", _score_of(scores, keys, "ashe")),
                 ("emre", _score_of(scores, keys, "emre")),
+                ("anran", _score_of(scores, keys, "anran")),
+                ("freja", _score_of(scores, keys, "freja")),
+                ("shion", _score_of(scores, keys, "shion")),
+                ("sierra", _score_of(scores, keys, "sierra")),
+                ("vendetta", _score_of(scores, keys, "vendetta")),
                 ("genji", _score_of(scores, keys, "genji")),
                 ("sojourn", _score_of(scores, keys, "sojourn")),
                 ("cassidy", _score_of(scores, keys, "cassidy")),

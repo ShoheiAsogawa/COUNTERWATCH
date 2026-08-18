@@ -151,6 +151,29 @@ def _confusion_unit_tests() -> list[str]:
         fails.append("tinted jpeg ashe was not read as ashe")
     if match_arr(degrade("mauga", blue), "tank") != "mauga":
         fails.append("tinted jpeg mauga was rewritten to emre")
+
+    new_slots = (
+        ("dmon", "tank"),
+        ("domina", "tank"),
+        ("hazard", "tank"),
+        ("emre", "damage"),
+        ("anran", "damage"),
+        ("freja", "damage"),
+        ("shion", "damage"),
+        ("sierra", "damage"),
+        ("vendetta", "damage"),
+        ("mizuki", "support"),
+        ("wuyang", "support"),
+        ("juno", "support"),
+        ("jetpack-cat", "support"),
+    )
+    for name, slot in new_slots:
+        got = match(name, slot)
+        if got != name:
+            fails.append(f"{name} portrait in {slot} slot was read as {got}")
+        got_j = match_arr(degrade(name, blue), slot)
+        if got_j != name:
+            fails.append(f"tinted jpeg {name} in {slot} slot was read as {got_j}")
     return fails
 
 
@@ -174,6 +197,18 @@ def main() -> int:
     tank_enemies = ["sigma", "genji", "sojourn", "mercy", "juno"]
     tank = _run(tank_allies, tank_enemies, "kiriko", "tank-slot mauga")
     fails.extend(_expect(tank, tank_allies, tank_enemies, "kiriko"))
+
+    # Latest + other new portraits on one 5+5 board (D.Mon tank, not D.Va).
+    new_allies = ["dmon", "emre", "anran", "mizuki", "jetpack-cat"]
+    new_enemies = ["domina", "freja", "vendetta", "wuyang", "juno"]
+    new_board = _run(new_allies, new_enemies, "mizuki", "new-hero roster dmon/emre")
+    fails.extend(_expect(new_board, new_allies, new_enemies, "mizuki"))
+    crushed_new = _run(
+        new_allies, new_enemies, "mizuki", "discord jpeg new-hero roster", discord=True
+    )
+    fails.extend(_expect(crushed_new, new_allies, new_enemies, "mizuki"))
+    if crushed_new["allies"][0] != "dmon":
+        fails.append(f"D.Mon tank slot became {crushed_new['allies'][0]}")
 
     # Real TAB is a semi-transparent overlay on the map, then Discord JPEG-crushes it.
     real = _run(allies, enemies, "mizuki", "realistic transparent TAB", realistic=True)

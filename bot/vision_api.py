@@ -12,7 +12,8 @@ Return ONLY JSON:
 {"map":"english map name or key","self":"hero key of highlighted/own row or null","allies":["hero-key",...],"enemies":["hero-key",...],"side":"attack|defend|unknown"}
 Rules:
 - Allies are the TOP (blue) table. Enemies are the BOTTOM (red) table. Always 5 and 5 in role queue.
-- Use hyphen keys: wrecking-ball, soldier-76, dva, kiriko, juno, emre, mizuki, hazard, route-66.
+- Use hyphen keys: wrecking-ball, soldier-76, dva, dmon, kiriko, juno, emre, mizuki, hazard, anran, freja, shion, sierra, vendetta, domina, jetpack-cat, wuyang, route-66.
+- D.Mon / Demon (purple hair, cyan ear antenna, tank) is not D.Va, Junker Queen, or Hazard.
 - Juno (teal/purple visor, yellow accents) is not Wuyang (orange face). Emre is not Hazard, Mauga, Hanzo, or Anran.
 - Mizuki (neon-green visor, conical hat) is not Kiriko (red fox mask).
 - Same hero may appear on both teams. Keep both. Do not drop names to unique-only.
